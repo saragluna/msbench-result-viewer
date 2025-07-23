@@ -12,6 +12,9 @@ This is an enhanced Request Viewer that uses a Python web server to provide real
 
 ## Quick Start
 
+
+You could store all your msbench-cli run results under a folder, and each time under that folder run the download command `msbench-cli extract --run_id 16456557241 --output ./16456557241`. And then paste the root folder to the web page, select the instance, then check the result.
+
 1. **Start the Python web server:**
    ```bash
    python3 web_server.py
