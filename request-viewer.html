@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Viewer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #2c3e50;
+        }
+        .request-container {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .request-id {
+            font-weight: bold;
+            color: #2980b9;
+        }
+        .messages-section {
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .message-role {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .user-message {
+            background-color: #e8f4f8;
+        }
+        .assistant-message {
+            background-color: #eaf7ee;
+        }
+        .system-message {
+            background-color: #f7f7f7;
+            font-style: italic;
+        }
+        .tool-message {
+            background-color: #fef9e7;
+        }
+        .tool-section {
+            margin-top: 15px;
+        }
+        .tool-name {
+            background-color: #eee;
+            padding: 5px 8px;
+            border-radius: 4px;
+            margin-right: 5px;
+            font-size: 0.9em;
+        }
+        .response-section {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .model-info {
+            text-align: right;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        pre {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .collapsible {
+            background-color: #f1f1f1;
+            color: #444;
+            cursor: pointer;
+            padding: 10px;
+            width: 100%;
+            text-align: left;
+            outline: none;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .active, .collapsible:hover {
+            background-color: #e8e8e8;
+        }
+        .content {
+            padding: 0 10px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.2s ease-out;
+            background-color: white;
+        }
+        .content.expanded {
+            max-height: none;
+            overflow: auto;
+            max-height: 500px; /* Set a reasonable max height for scrolling */
+        }
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+        }
+        .nav-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .nav-button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            margin: 10px 0;
+        }
+        .file-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .file-select {
+            flex: 1;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 14px;
+        }
+        label {
+            font-weight: bold;
+        }
+        #refresh-btn {
+            background-color: #2ecc71;
+            padding: 8px 15px;
+        }
+        .side-nav {
+            position: fixed;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 1000;
+            background-color: rgba(52, 152, 219, 0.9);
+            color: white;
+            border: none;
+            padding: 20px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        .side-nav:hover {
+            background-color: rgba(52, 152, 219, 1);
+            transform: translateY(-50%) scale(1.1);
+        }
+        .side-nav:disabled {
+            background-color: rgba(189, 195, 199, 0.7);
+            cursor: not-allowed;
+            transform: translateY(-50%) scale(1);
+        }
+        .side-nav:disabled:hover {
+            background-color: rgba(189, 195, 199, 0.7);
+            transform: translateY(-50%) scale(1);
+        }
+        #prev-btn-side {
+            left: 20px;
+        }
+        #next-btn-side {
+            right: 20px;
+        }
+        .status-center {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            font-weight: bold;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <h1>Request Viewer</h1>
+    
+    <div class="file-selector">
+        <label for="root-folder">Root Folder Path:</label>
+        <input type="text" id="root-folder" class="file-select" placeholder="Enter folder path (e.g., /path/to/folder or leave empty for current)" style="flex: 2;">
+        <button id="scan-btn" class="nav-button" style="background-color: #9b59b6; margin-left: 5px;">Scan Folder</button>
+    </div>
+    
+    <div class="file-selector">
+        <label for="file-select">Select Request File:</label>
+        <select id="file-select" class="file-select">
+            <!-- Options will be dynamically populated -->
+        </select>
+        <input type="text" id="custom-file" class="file-select" placeholder="Or enter file path manually">
+        <button id="refresh-btn" class="nav-button">Load File</button>
+    </div>
+
+    <!-- Side navigation buttons -->
+    <button id="prev-btn-side" class="side-nav" disabled>‹</button>
+    <button id="next-btn-side" class="side-nav" disabled>›</button>
+    
+    <!-- Status indicator at top center -->
+    <div class="status-center">Request <span id="current-index">0</span> of <span id="total-requests">0</span></div>
+    
+    <div id="request-container" class="request-container">
+        <div class="loader">Loading requests...</div>
+    </div>
+    
+    <script>
+        // Function to scan for available sim-requests files using the Python web server
+        async function scanForSimRequestFiles(rootFolder = '') {
+            try {
+                console.log("Scanning for sim-requests files in folder:", rootFolder || "current directory");
+                
+                // Use the web server's API to scan for files
+                const apiUrl = `/api/scan${rootFolder ? `?root=${encodeURIComponent(rootFolder)}` : ''}`;
+                console.log("Making API request to:", apiUrl);
+                
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                if (!data.success) {
+                    throw new Error(data.error || 'API request failed');
+                }
+                
+                console.log(`Successfully scanned ${data.root_folder}`);
+                console.log(`Found ${data.count} sim-requests files`);
+                
+                if (data.files && data.files.length > 0) {
+                    return populateFileDropdownWithDisplayNames(data.files);
+                } else {
+                    console.warn('No sim-requests files found');
+                    // Fallback to local file if no files found via API
+                    const selectElement = document.getElementById('file-select');
+                    selectElement.innerHTML = '';
+                    const option = document.createElement('option');
+                    option.value = 'sim-requests-0.txt';
+                    option.textContent = 'sim-requests-0.txt (local fallback)';
+                    selectElement.appendChild(option);
+                    return false;
+                }
+                
+            } catch (error) {
+                console.error('Error scanning for sim-requests files:', error);
+                
+                // Show error message to user
+                const container = document.getElementById('request-container');
+                container.innerHTML = `
+                    <div class="error">
+                        <h3>Directory Scanning Error</h3>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                        <p>This usually means:</p>
+                        <ul>
+                            <li>The Python web server is not running</li>
+                            <li>The specified directory doesn't exist</li>
+                            <li>There are permission issues accessing the directory</li>
+                        </ul>
+                        <h4>To fix this:</h4>
+                        <ol>
+                            <li>Make sure you're running this page through the Python web server:<br>
+                                <code>python3 web_server.py</code></li>
+                            <li>Check that the directory path is correct</li>
+                            <li>Try using a local file instead by entering the filename in the manual input field</li>
+                        </ol>
+                    </div>
+                `;
+                
+                // Fallback to hardcoded option
+                const selectElement = document.getElementById('file-select');
+                selectElement.innerHTML = '';
+                const option = document.createElement('option');
+                option.value = 'sim-requests-0.txt';
+                option.textContent = 'sim-requests-0.txt (fallback)';
+                selectElement.appendChild(option);
+                
+                return false;
+            }
+        }
+        
+        // Helper function to populate the file dropdown with display names
+        function populateFileDropdownWithDisplayNames(fileObjects) {
+            const selectElement = document.getElementById('file-select');
+            selectElement.innerHTML = '';
+            
+            if (fileObjects.length > 0) {
+                fileObjects.forEach(fileObj => {
+                    const option = document.createElement('option');
+                    option.value = fileObj.fullPath;
+                    option.textContent = fileObj.displayName;
+                    // Add additional metadata as data attributes for potential future use
+                    option.setAttribute('data-run-id', fileObj.runId);
+                    option.setAttribute('data-instance', fileObj.instance);
+                    option.setAttribute('data-size', fileObj.size || '');
+                    selectElement.appendChild(option);
+                });
+                
+                // Default to the first file
+                selectElement.value = fileObjects[0].fullPath;
+                console.log(`Populated dropdown with ${fileObjects.length} files`);
+                return true;
+            } else {
+                // Fallback to hardcoded option if no files found
+                const option = document.createElement('option');
+                option.value = 'sim-requests-0.txt';
+                option.textContent = 'sim-requests-0.txt (no files found)';
+                selectElement.appendChild(option);
+                
+                console.warn('No sim-requests files found, using default');
+                return false;
+            }
+        }
+        
+        // Helper function to populate the file dropdown (for backward compatibility)
+        function populateFileDropdown(files, isFullPath = false) {
+            const selectElement = document.getElementById('file-select');
+            selectElement.innerHTML = '';
+            
+            if (files.length > 0) {
+                files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file;
+                    // Show meaningful path components for better readability
+                    if (isFullPath) {
+                        const pathParts = file.split('/');
+                        const filename = pathParts[pathParts.length - 1];
+                        
+                        // Extract meaningful path components
+                        let displayPath = '';
+                        for (let i = pathParts.length - 1; i >= 0; i--) {
+                            if (pathParts[i].match(/^\d+$/) || // numbered folders
+                                pathParts[i].includes('javamigration') || // project folders
+                                pathParts[i].includes('conversation-panel') || // conversation panels
+                                pathParts[i] === 'sim-output' || 
+                                pathParts[i] === 'output') {
+                                displayPath = pathParts.slice(i).join('/');
+                                break;
+                            }
+                        }
+                        
+                        if (!displayPath) {
+                            displayPath = pathParts.slice(-4).join('/'); // Show last 4 components as fallback
+                        }
+                        
+                        option.textContent = filename + ' (' + displayPath + ')';
+                    } else {
+                        option.textContent = file;
+                    }
+                    selectElement.appendChild(option);
+                });
+                
+                // Default to the first file
+                selectElement.value = files[0];
+                return true;
+            } else {
+                // Fallback to hardcoded option if no files found
+                const option = document.createElement('option');
+                option.value = 'sim-requests-0.txt';
+                option.textContent = 'sim-requests-0.txt';
+                selectElement.appendChild(option);
+                
+                console.warn('No sim-requests files found, using default');
+                return false;
+            }
+        }
+        
+        // Function to load the selected file
+        function loadSelectedFile() {
+            const customFileInput = document.getElementById('custom-file');
+            const selectElement = document.getElementById('file-select');
+            
+            // Use custom file input if provided, otherwise use the dropdown selection
+            const fileName = customFileInput.value.trim() || selectElement.value;
+            
+            document.getElementById('request-container').innerHTML = 
+                '<div class="loader">Loading requests from ' + fileName + '...</div>';
+            
+            console.log("Attempting to load file:", fileName);
+            
+            // Check if this looks like a full path (contains / or \)
+            const isFullPath = fileName.includes('/') || fileName.includes('\\');
+            
+            if (isFullPath) {
+                // Use the API endpoint for full paths
+                const apiUrl = `/api/file?path=${encodeURIComponent(fileName)}`;
+                console.log("Using API endpoint:", apiUrl);
+                
+                fetch(apiUrl)
+                    .then(response => {
+                        console.log("API response status:", response.status);
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        return response.text();
+                    })
+                    .then(text => {
+                        console.log("Got response text, length:", text.length);
+                        try {
+                            const data = JSON.parse(text);
+                            initializeViewer(data);
+                        } catch(e) {
+                            // If direct parsing fails, try to extract JSON from the text
+                            console.log("Direct parsing failed, trying to extract JSON", e);
+                            const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+                            if (jsonMatch) {
+                                const jsonData = JSON.parse(jsonMatch[0]);
+                                initializeViewer(jsonData);
+                            } else {
+                                throw new Error("No valid JSON found in file");
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error("Error loading file via API:", error);
+                        document.getElementById('request-container').innerHTML = 
+                            '<div class="error">' +
+                            '<h3>Failed to load the file via API</h3>' +
+                            '<p><strong>File:</strong> ' + fileName + '</p>' +
+                            '<p><strong>Error:</strong> ' + error.message + '</p>' +
+                            '<p>This usually means:</p>' +
+                            '<ul>' +
+                            '<li>The file path is incorrect</li>' +
+                            '<li>The file doesn\'t exist at the specified location</li>' +
+                            '<li>There are permission issues accessing the file</li>' +
+                            '<li>The Python web server is not running</li>' +
+                            '</ul>' +
+                            '<h4>To fix this:</h4>' +
+                            '<ol>' +
+                            '<li>Make sure you\'re running the Python web server:<br><code>python3 web_server.py</code></li>' +
+                            '<li>Check that the file path is correct</li>' +
+                            '<li>Try using a shorter relative path in the manual input field</li>' +
+                            '</ol>' +
+                            '</div>';
+                    });
+            } else {
+                // Use direct file loading for relative paths (backward compatibility)
+                loadFileDirectly(fileName);
+            }
+        }
+        
+        // Function to load files directly (for backward compatibility)
+        function loadFileDirectly(fileName) {
+            // Try to construct the absolute URL for debugging
+            let absoluteUrl;
+            try {
+                absoluteUrl = new URL(fileName, window.location.href).href;
+            } catch (e) {
+                absoluteUrl = window.location.href.split('/').slice(0, -1).join('/') + '/' + fileName;
+            }
+            
+            console.log("Loading file directly:", fileName);
+            console.log("Full URL:", absoluteUrl);
+            
+            // Using XMLHttpRequest which may have better compatibility with local files
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', fileName, true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    console.log("XHR status:", xhr.status);
+                    
+                    // For local files, status 0 might be valid
+                    if (xhr.status === 200 || xhr.status === 0 && xhr.responseText && xhr.responseText.length > 0) {
+                        try {
+                            const text = xhr.responseText;
+                            console.log("Got response text, length:", text.length);
+                            
+                            // Try to parse the JSON directly
+                            const data = JSON.parse(text);
+                            initializeViewer(data);
+                        } catch(e) {
+                            // If direct parsing fails, try to extract JSON from the text
+                            console.log("Direct parsing failed, trying to extract JSON", e);
+                            try {
+                                const text = xhr.responseText;
+                                const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+                                if (jsonMatch) {
+                                    try {
+                                        const jsonData = JSON.parse(jsonMatch[0]);
+                                        initializeViewer(jsonData);
+                                    } catch(e2) {
+                                        console.error("Failed to extract valid JSON:", e2);
+                                        document.getElementById('request-container').innerHTML = '<div class="error">Failed to parse the file. It may not contain valid JSON.</div>';
+                                    }
+                                } else {
+                                    console.error("No JSON array found in the file");
+                                    document.getElementById('request-container').innerHTML = '<div class="error">No JSON array found in the file.</div>';
+                                }
+                            } catch (parseErr) {
+                                console.error("Error processing response:", parseErr);
+                                document.getElementById('request-container').innerHTML = '<div class="error">Failed to process the file content.</div>';
+                            }
+                        }
+                    } else {
+                        console.error("Error fetching the file:", xhr.statusText, "Status:", xhr.status);
+                        document.getElementById('request-container').innerHTML = 
+                            '<div class="error">' +
+                            '<h3>Failed to load the file</h3>' +
+                            '<p>Status: ' + xhr.status + ' - ' + xhr.statusText + '</p>' +
+                            '<p>This usually happens when trying to load local files in a browser due to CORS restrictions.</p>' +
+                            '<h4>Solutions:</h4>' +
+                            '<ol>' +
+                            '<li><strong>Use a local web server:</strong><br>' +
+                            'Run <code>python3 -m http.server 8000</code> or <code>python -m http.server 8000</code> in this directory, then open <a href="http://localhost:8000/request-viewer.html">http://localhost:8000/request-viewer.html</a></li>' +
+                            '<li><strong>Use VS Code Live Server:</strong><br>' +
+                            'Install the "Live Server" extension in VS Code, then right-click this file and select "Open with Live Server"</li>' +
+                            '<li><strong>Copy file contents manually:</strong><br>' +
+                            'Open the ' + fileName + ' file, copy its contents, and paste them in the text area below</li>' +
+                            '</ol>' +
+                            '<h4>Manual File Input:</h4>' +
+                            '<textarea id="manual-input" placeholder="Paste the contents of ' + fileName + ' here..." style="width: 100%; height: 200px; margin: 10px 0; font-family: monospace; border: 1px solid #ddd; border-radius: 4px; padding: 10px;"></textarea><br>' +
+                            '<button onclick="loadFromTextarea()" style="padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px;">Load from Text Above</button>' +
+                            '</div>';
+                    }
+                }
+            };
+            xhr.onerror = function() {
+                console.error("Request error occurred");
+                document.getElementById('request-container').innerHTML = 
+                    '<div class="error">' +
+                    '<h3>Failed to load the file - Network/CORS Error</h3>' +
+                    '<p>This error occurs because browsers prevent local HTML files from loading other local files due to security restrictions.</p>' +
+                    '<h4>Solutions:</h4>' +
+                    '<ol>' +
+                    '<li><strong>Use a local web server:</strong><br>' +
+                    'Run <code>python -m http.server 8000</code> in this directory, then open <a href="http://localhost:8000/request-viewer.html">http://localhost:8000/request-viewer.html</a></li>' +
+                    '<li><strong>Use VS Code Live Server:</strong><br>' +
+                    'Install the "Live Server" extension in VS Code, then right-click this file and select "Open with Live Server"</li>' +
+                    '<li><strong>Copy file contents manually:</strong><br>' +
+                    'Open the sim-requests-0.txt file, copy its contents, and paste them in the text area below</li>' +
+                    '</ol>' +
+                    '<h4>Manual File Input:</h4>' +
+                    '<textarea id="manual-input" placeholder="Paste the contents of sim-requests-0.txt here..." style="width: 100%; height: 200px; margin: 10px 0; font-family: monospace;"></textarea>' +
+                    '<button onclick="loadFromTextarea()" style="padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">Load from Text Above</button>' +
+                    '</div>';
+            };
+            xhr.send();
+        }
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Start with a scan of the current directory
+            scanForSimRequestFiles().then(() => {
+                // Set up the refresh button
+                document.getElementById('refresh-btn').addEventListener('click', loadSelectedFile);
+                
+                // Set up the scan folder button with better error handling
+                document.getElementById('scan-btn').addEventListener('click', async () => {
+                    const rootFolder = document.getElementById('root-folder').value.trim();
+                    console.log('Scan button clicked, root folder:', rootFolder);
+                    
+                    // Show loading state
+                    const scanBtn = document.getElementById('scan-btn');
+                    const originalText = scanBtn.textContent;
+                    scanBtn.textContent = 'Scanning...';
+                    scanBtn.disabled = true;
+                    
+                    try {
+                        await scanForSimRequestFiles(rootFolder);
+                        console.log('Folder scan completed successfully');
+                    } catch (error) {
+                        console.error('Folder scan failed:', error);
+                    } finally {
+                        // Restore button state
+                        scanBtn.textContent = originalText;
+                        scanBtn.disabled = false;
+                    }
+                });
+                
+                // Load the default file
+                loadSelectedFile();
+            }).catch(error => {
+                console.error('Initial scan failed:', error);
+                // Still set up event listeners even if initial scan fails
+                document.getElementById('refresh-btn').addEventListener('click', loadSelectedFile);
+                document.getElementById('scan-btn').addEventListener('click', async () => {
+                    const rootFolder = document.getElementById('root-folder').value.trim();
+                    await scanForSimRequestFiles(rootFolder);
+                });
+            });
+        });
+
+        let currentRequestIndex = 0;
+        let requests = [];
+
+        function initializeViewer(data) {
+            requests = data;
+            currentRequestIndex = 0;
+            document.getElementById('total-requests').textContent = requests.length;
+            document.getElementById('current-index').textContent = '1';
+            
+            // Reset navigation buttons
+            document.getElementById('prev-btn-side').disabled = true;
+            document.getElementById('next-btn-side').disabled = requests.length <= 1;
+            
+            renderRequest(0);
+            
+            // Add event listeners for navigation buttons
+            document.getElementById('prev-btn-side').addEventListener('click', () => {
+                if (currentRequestIndex > 0) {
+                    currentRequestIndex--;
+                    document.getElementById('current-index').textContent = currentRequestIndex + 1;
+                    renderRequest(currentRequestIndex);
+                    
+                    document.getElementById('next-btn-side').disabled = false;
+                    if (currentRequestIndex === 0) {
+                        document.getElementById('prev-btn-side').disabled = true;
+                    }
+                }
+            });
+            
+            document.getElementById('next-btn-side').addEventListener('click', () => {
+                if (currentRequestIndex < requests.length - 1) {
+                    currentRequestIndex++;
+                    document.getElementById('current-index').textContent = currentRequestIndex + 1;
+                    renderRequest(currentRequestIndex);
+                    
+                    document.getElementById('prev-btn-side').disabled = false;
+                    if (currentRequestIndex === requests.length - 1) {
+                        document.getElementById('next-btn-side').disabled = true;
+                    }
+                }
+            });
+        }
+
+        function renderRequest(index) {
+            const request = requests[index];
+            const container = document.getElementById('request-container');
+            
+            let html = `
+                <div class="request-header">
+                    <span class="request-id">Request ID: ${request.response?.requestId || 'N/A'}</span>
+                    <span class="model-info">Model: ${request.model || 'Unknown'}</span>
+                </div>
+            `;
+            
+            // Render request messages
+            html += '<div class="messages-section">';
+            html += '<button class="collapsible">Request Messages</button>';
+            html += '<div class="content">';
+            
+            if (request.requestMessages && request.requestMessages.length > 0) {
+                html += '<ul style="list-style-type: none; padding-left: 0;">';
+                
+                request.requestMessages.forEach(message => {
+                    const role = message.role;
+                    const roleClass = role === 'user' ? 'user-message' : 
+                                      role === 'assistant' ? 'assistant-message' : 
+                                      role === 'system' ? 'system-message' : 'tool-message';
+                    
+                    html += `<li class="message ${roleClass}">`;
+                    html += `<div class="message-role">${role.toUpperCase()}</div>`;
+                    
+                    if (message.content) {
+                        message.content.forEach((content, contentIndex) => {
+                            const contentId = `content-${index}-${role}-${contentIndex}`;
+                            // Use meaningful labels based on role and content index
+                            let contentLabel;
+                            if (role === 'tool' && contentIndex === 0) {
+                                contentLabel = 'Tool call result';
+                            } else if (role === 'tool' && contentIndex === 1) {
+                                contentLabel = 'Metadata';
+                            } else if (role === 'assistant' && contentIndex === 0) {
+                                contentLabel = 'Assistant';
+                            } else if (contentIndex === 0) {
+                                contentLabel = 'Prompt';
+                            } else if (contentIndex === 1) {
+                                contentLabel = 'Metadata';
+                            } else {
+                                contentLabel = `Content ${contentIndex + 1}`;
+                            }
+                            html += `<button class="collapsible" style="margin: 5px 0; font-size: 0.9em; background-color: rgba(0,0,0,0.05);">${contentLabel}</button>`;
+                            html += `<div class="content">`;
+                            if (content.text) {
+                                html += `<pre>${escapeHtml(content.text)}</pre>`;
+                            } else if (typeof content === 'object') {
+                                html += `<pre>${escapeHtml(JSON.stringify(content, null, 2))}</pre>`;
+                            }
+                            html += `</div>`;
+                        });
+                    } else {
+                        html += '<p>Empty content</p>';
+                    }
+                    
+                    // For assistant messages, also display tool calls if present
+                    if (role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+                        html += '<div class="tool-section">';
+                        html += '<strong>Tool Calls:</strong>';
+                        html += '<ul>';
+                        
+                        message.tool_calls.forEach(toolCall => {
+                            html += '<li>';
+                            html += `<span class="tool-name">${toolCall.function?.name || 'Unknown Tool'}</span>`;
+                            if (toolCall.function?.arguments) {
+                                html += `<pre>${escapeHtml(toolCall.function.arguments)}</pre>`;
+                            }
+                            html += '</li>';
+                        });
+                        
+                        html += '</ul>';
+                        html += '</div>';
+                    }
+                    
+                    html += '</li>';
+                });
+                
+                html += '</ul>';
+            } else {
+                html += '<p>No request messages</p>';
+            }
+            
+            html += '</div>'; // End of content div
+            html += '</div>'; // End of messages section
+            
+            // Render request options section
+            html += '<div class="tool-section">';
+            html += '<button class="collapsible">Request Options</button>';
+            html += '<div class="content">';
+            
+            if (request.requestOptions) {
+                // Display only tool names instead of full tools objects
+                if (request.requestOptions.tools && request.requestOptions.tools.length > 0) {
+                    html += '<strong>Tools:</strong>';
+                    html += '<ul>';
+                    
+                    request.requestOptions.tools.forEach(tool => {
+                        const toolName = tool.function?.name || 'Unknown Tool';
+                        html += `<li>${toolName}</li>`;
+                    });
+                    
+                    html += '</ul>';
+                }
+                
+                // Display other request options
+                const { tools, ...otherOptions } = request.requestOptions;
+                html += `<pre>${escapeHtml(JSON.stringify(otherOptions, null, 2))}</pre>`;
+            } else {
+                html += '<p>No request options</p>';
+            }
+            
+            html += '</div>'; // End of content div
+            html += '</div>'; // End of tool section
+            
+            // Render response section
+            html += '<div class="response-section">';
+            html += '<button class="collapsible">Response</button>';
+            html += '<div class="content">';
+            
+            if (request.response) {
+                if (request.response.value && request.response.value.length > 0) {
+                    html += '<strong>Response Text:</strong>';
+                    html += `<pre>${escapeHtml(request.response.value.join('\n'))}</pre>`;
+                }
+                
+                if (request.response.copilotFunctionCalls && request.response.copilotFunctionCalls.length > 0) {
+                    html += '<strong>Function Calls:</strong>';
+                    html += '<ul>';
+                    
+                    request.response.copilotFunctionCalls.forEach(call => {
+                        html += `<li><span class="tool-name">${call.name || 'Unknown Function'}</span>`;
+                        if (call.arguments) {
+                            html += `<pre>${escapeHtml(call.arguments)}</pre>`;
+                        }
+                        html += '</li>';
+                    });
+                    
+                    html += '</ul>';
+                }
+                
+                // Display usage info if available
+                if (request.response.usage) {
+                    html += '<strong>Usage:</strong>';
+                    html += `<pre>${escapeHtml(JSON.stringify(request.response.usage, null, 2))}</pre>`;
+                }
+            } else {
+                html += '<p>No response data</p>';
+            }
+            
+            html += '</div>'; // End of content div
+            html += '</div>'; // End of response section
+            
+            container.innerHTML = html;
+            
+            // Add click event listeners to all collapsible elements
+            const collapsibles = document.getElementsByClassName('collapsible');
+            for (let i = 0; i < collapsibles.length; i++) {
+                collapsibles[i].addEventListener('click', function() {
+                    this.classList.toggle('active');
+                    const content = this.nextElementSibling;
+                    
+                    if (content.classList.contains('expanded')) {
+                        content.classList.remove('expanded');
+                        content.style.maxHeight = '0';
+                    } else {
+                        content.classList.add('expanded');
+                        // For expanded content, allow natural height with scrolling
+                        content.style.maxHeight = 'none';
+                    }
+                });
+                
+                // Handle main sections - Request Messages and Response open by default, Request Options closed
+                const isMainSection = collapsibles[i].textContent.includes('Request Messages') || 
+                                     collapsibles[i].textContent.includes('Response');
+                
+                if (isMainSection) {
+                    collapsibles[i].classList.add('active');
+                    const content = collapsibles[i].nextElementSibling;
+                    content.classList.add('expanded');
+                    content.style.maxHeight = 'none';
+                }
+                // Request Options and content sections within messages remain collapsed by default (no action needed)
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Function to load data from the manual textarea input
+        function loadFromTextarea() {
+            const textarea = document.getElementById('manual-input');
+            const text = textarea.value.trim();
+            
+            if (!text) {
+                alert('Please paste the file contents in the textarea first.');
+                return;
+            }
+            
+            try {
+                // Try to parse the JSON directly
+                const data = JSON.parse(text);
+                initializeViewer(data);
+            } catch(e) {
+                // If direct parsing fails, try to extract JSON from the text
+                console.log("Direct parsing failed, trying to extract JSON", e);
+                try {
+                    const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+                    if (jsonMatch) {
+                        const jsonData = JSON.parse(jsonMatch[0]);
+                        initializeViewer(jsonData);
+                    } else {
+                        alert('No valid JSON array found. Please check the file format.');
+                    }
+                } catch(e2) {
+                    console.error("Failed to extract valid JSON:", e2);
+                    alert('Failed to parse the content as JSON. Please check the file format.');
+                }
+            }
+        }
+    </script>
+</body>
+</html>
