@@ -896,21 +896,12 @@
                     return;
                 }
                 
-                // Find matching function calls
+                // Find matching function calls - only search by function name
                 highlightedFunctionCalls = [];
                 allFunctionCalls.forEach((functionCall, index) => {
                     const matchesName = functionCall.name.toLowerCase().includes(term);
-                    const matchesArguments = functionCall.arguments && 
-                        (typeof functionCall.arguments === 'string' ? 
-                            functionCall.arguments.toLowerCase().includes(term) :
-                            JSON.stringify(functionCall.arguments).toLowerCase().includes(term));
                     
-                    // For "None" entries, only match by name
-                    if (functionCall.name === 'None') {
-                        if (matchesName) {
-                            highlightedFunctionCalls.push(index);
-                        }
-                    } else if (matchesName || matchesArguments) {
+                    if (matchesName) {
                         highlightedFunctionCalls.push(index);
                     }
                 });
@@ -1301,8 +1292,56 @@
             
             // Render the request with focus on the selected function call
             renderRequest(currentRequestIndex, functionCall.hasFunction ? functionCall.callIndex : -1);
+            
+            // Scroll to the last message in the request messages section
+            setTimeout(() => {
+                scrollToLastMessage();
+            }, 100); // Small delay to ensure the content is rendered
         }
 
+        // Function to scroll to the last message in the request messages
+        function scrollToLastMessage() {
+            // Find all message elements
+            const messages = document.querySelectorAll('.message');
+            if (messages.length > 0) {
+                // Get the last message
+                const lastMessage = messages[messages.length - 1];
+                
+                // Ensure the Request Messages section is expanded first
+                const requestMessagesSection = document.querySelector('.messages-section');
+                if (requestMessagesSection) {
+                    const collapsibleButton = requestMessagesSection.querySelector('.collapsible');
+                    const contentDiv = requestMessagesSection.querySelector('.content');
+                    
+                    if (collapsibleButton && contentDiv) {
+                        // Expand the section if it's not already expanded
+                        if (!contentDiv.classList.contains('expanded')) {
+                            collapsibleButton.classList.add('active');
+                            contentDiv.classList.add('expanded');
+                            contentDiv.style.maxHeight = 'none';
+                        }
+                        
+                        // Scroll to the last message with smooth animation
+                        lastMessage.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'center',
+                            inline: 'nearest'
+                        });
+                        
+                        // Add a subtle highlight effect to the last message
+                        lastMessage.style.transition = 'background-color 0.5s ease';
+                        const originalBackground = window.getComputedStyle(lastMessage).backgroundColor;
+                        lastMessage.style.backgroundColor = '#fff3cd';
+                        
+                        // Remove highlight after 2 seconds
+                        setTimeout(() => {
+                            lastMessage.style.backgroundColor = originalBackground;
+                        }, 2000);
+                    }
+                }
+            }
+        }
+        
         function renderRequest(index, highlightFunctionCallIndex = -1) {
             const request = requests[index];
             const container = document.getElementById('request-container');
