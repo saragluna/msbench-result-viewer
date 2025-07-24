@@ -308,24 +308,168 @@
             box-shadow: 0 6px 16px rgba(0,0,0,0.2);
         }
 
+        .drag-drop-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            background-color: #f8f9fa;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .drag-drop-area:hover {
+            border-color: #007bff;
+            background-color: #e7f3ff;
+        }
+
+        .drag-drop-area.drag-over {
+            border-color: #28a745;
+            background-color: #d4edda;
+            transform: scale(1.02);
+        }
+
+        .drag-drop-area .upload-icon {
+            font-size: 48px;
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+
+        .drag-drop-area.drag-over .upload-icon {
+            color: #28a745;
+        }
+
+        .drag-drop-area h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+
+        .drag-drop-area p {
+            margin: 0;
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .drag-drop-area.drag-over p {
+            color: #155724;
+        }
+
+        .file-input-hidden {
+            display: none;
+        }
+
+        .or-divider {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+            color: #6c757d;
+        }
+
+        .or-divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background-color: #dee2e6;
+            z-index: 1;
+        }
+
+        .or-divider span {
+            background-color: white;
+            padding: 0 15px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .folder-options {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .folder-options-header {
+            background-color: #e9ecef;
+            padding: 12px 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #dee2e6;
+            transition: background-color 0.3s ease;
+        }
+
+        .folder-options-header:hover {
+            background-color: #dee2e6;
+        }
+
+        .folder-options-header h4 {
+            margin: 0;
+            color: #495057;
+            font-size: 16px;
+        }
+
+        .folder-options-toggle {
+            font-size: 18px;
+            color: #6c757d;
+            transition: transform 0.3s ease;
+        }
+
+        .folder-options-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            padding: 0 15px;
+        }
+
+        .folder-options-content.expanded {
+            max-height: 500px;
+            padding: 15px;
+        }
+
     </style>
 </head>
 <body>
     <h1>Request Viewer</h1>
     
-    <div class="file-selector">
-        <label for="root-folder">Root Folder Path:</label>
-        <input type="text" id="root-folder" class="file-select" placeholder="Enter folder path (e.g., /path/to/folder or leave empty for current)" style="flex: 2;">
-        <button id="scan-btn" class="nav-button" style="background-color: #9b59b6; margin-left: 5px;">Scan Folder</button>
+    <!-- Drag and Drop Area -->
+    <div class="drag-drop-area" id="drag-drop-area">
+        <div class="upload-icon">📁</div>
+        <h3>Drop sim-requests file here</h3>
+        <p>Drag and drop a sim-requests file, or click to browse</p>
+        <input type="file" id="file-input" class="file-input-hidden" accept=".txt,.json">
     </div>
     
-    <div class="file-selector">
-        <label for="file-select">Select Request File:</label>
-        <select id="file-select" class="file-select">
-            <!-- Options will be dynamically populated -->
-        </select>
-        <input type="text" id="custom-file" class="file-select" placeholder="Or enter file path manually">
-        <button id="refresh-btn" class="nav-button">Load File</button>
+    <div class="or-divider">
+        <span>OR</span>
+    </div>
+    
+    <!-- Collapsible Folder Options -->
+    <div class="folder-options">
+        <div class="folder-options-header" id="folder-options-header">
+            <h4>Browse Files from Folder</h4>
+            <span class="folder-options-toggle" id="folder-options-toggle">▼</span>
+        </div>
+        <div class="folder-options-content" id="folder-options-content">
+            <div class="file-selector">
+                <label for="root-folder">Root Folder Path:</label>
+                <input type="text" id="root-folder" class="file-select" placeholder="Enter folder path (e.g., /path/to/folder or leave empty for current)" style="flex: 2;">
+                <button id="scan-btn" class="nav-button" style="background-color: #9b59b6; margin-left: 5px;">Scan Folder</button>
+            </div>
+            
+            <div class="file-selector">
+                <label for="file-select">Select Request File:</label>
+                <select id="file-select" class="file-select">
+                    <!-- Options will be dynamically populated -->
+                </select>
+                <input type="text" id="custom-file" class="file-select" placeholder="Or enter file path manually">
+                <button id="refresh-btn" class="nav-button">Load File</button>
+            </div>
+        </div>
     </div>
 
     <!-- Side navigation buttons -->
@@ -717,6 +861,12 @@
         
         // Initialize the page
         document.addEventListener('DOMContentLoaded', function() {
+            // Set up drag and drop functionality
+            setupDragAndDrop();
+            
+            // Set up folder options collapsible functionality
+            setupFolderOptions();
+            
             // Set up back to top functionality
             setupBackToTop();
             
@@ -760,6 +910,158 @@
                 });
             });
         });
+
+        // Function to set up folder options collapsible functionality
+        function setupFolderOptions() {
+            const header = document.getElementById('folder-options-header');
+            const content = document.getElementById('folder-options-content');
+            const toggle = document.getElementById('folder-options-toggle');
+            
+            header.addEventListener('click', function() {
+                const isExpanded = content.classList.contains('expanded');
+                
+                if (isExpanded) {
+                    // Collapse
+                    content.classList.remove('expanded');
+                    toggle.textContent = '▼';
+                    toggle.style.transform = 'rotate(0deg)';
+                } else {
+                    // Expand
+                    content.classList.add('expanded');
+                    toggle.textContent = '▲';
+                    toggle.style.transform = 'rotate(180deg)';
+                }
+            });
+        }
+
+        // Function to set up drag and drop functionality
+        function setupDragAndDrop() {
+            const dragDropArea = document.getElementById('drag-drop-area');
+            const fileInput = document.getElementById('file-input');
+
+            // Click to browse files
+            dragDropArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+
+            // File input change event
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    handleFileLoad(file);
+                }
+            });
+
+            // Drag and drop events
+            dragDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dragDropArea.classList.add('drag-over');
+            });
+
+            dragDropArea.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dragDropArea.classList.remove('drag-over');
+            });
+
+            dragDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dragDropArea.classList.remove('drag-over');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    // Check if it's a sim-requests file or similar
+                    if (file.name.includes('sim-requests') || file.name.endsWith('.txt') || file.name.endsWith('.json')) {
+                        handleFileLoad(file);
+                    } else {
+                        alert('Please drop a sim-requests file (typically a .txt or .json file)');
+                    }
+                }
+            });
+
+            // Prevent default drag behaviors on the document
+            document.addEventListener('dragover', (e) => e.preventDefault());
+            document.addEventListener('drop', (e) => e.preventDefault());
+        }
+
+        // Function to handle file loading from drag and drop or file picker
+        function handleFileLoad(file) {
+            console.log('Loading file:', file.name);
+            
+            // Show loading message
+            document.getElementById('request-container').innerHTML = 
+                '<div class="loader">Loading requests from ' + file.name + '...</div>';
+            
+            // Update the drag drop area to show the selected file
+            const dragDropArea = document.getElementById('drag-drop-area');
+            dragDropArea.innerHTML = `
+                <div class="upload-icon">✅</div>
+                <h3>File loaded: ${file.name}</h3>
+                <p>Click to select a different file</p>
+            `;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                try {
+                    // Try to parse the JSON directly
+                    const data = JSON.parse(text);
+                    initializeViewer(data);
+                } catch(error) {
+                    // If direct parsing fails, try to extract JSON from the text
+                    console.log("Direct parsing failed, trying to extract JSON", error);
+                    try {
+                        const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+                        if (jsonMatch) {
+                            const jsonData = JSON.parse(jsonMatch[0]);
+                            initializeViewer(jsonData);
+                        } else {
+                            throw new Error('No valid JSON array found');
+                        }
+                    } catch(e2) {
+                        console.error("Failed to extract valid JSON:", e2);
+                        document.getElementById('request-container').innerHTML = 
+                            '<div class="error">' +
+                            '<h3>Failed to parse the file</h3>' +
+                            '<p>The file does not contain valid JSON data. Please check the file format.</p>' +
+                            '<p>Expected format: JSON array of request objects</p>' +
+                            '</div>';
+                        
+                        // Reset the drag drop area
+                        resetDragDropArea();
+                    }
+                }
+            };
+            
+            reader.onerror = function() {
+                console.error("Failed to read file");
+                document.getElementById('request-container').innerHTML = 
+                    '<div class="error">Failed to read the file. Please try again.</div>';
+                resetDragDropArea();
+            };
+            
+            reader.readAsText(file);
+        }
+
+        // Function to reset the drag drop area to its initial state
+        function resetDragDropArea() {
+            const dragDropArea = document.getElementById('drag-drop-area');
+            dragDropArea.innerHTML = `
+                <div class="upload-icon">📁</div>
+                <h3>Drop sim-requests file here</h3>
+                <p>Drag and drop a sim-requests file, or click to browse</p>
+                <input type="file" id="file-input" class="file-input-hidden" accept=".txt,.json">
+            `;
+            
+            // Re-setup the file input event listener
+            const fileInput = document.getElementById('file-input');
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    handleFileLoad(file);
+                }
+            });
+        }
 
         let currentRequestIndex = 0;
         let requests = [];

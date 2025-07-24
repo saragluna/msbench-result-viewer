@@ -1,0 +1,148 @@
+name: Deploy Request Viewer to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'request-viewer.html'
+  workflow_dispatch: # Allow manual triggering
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  # Build job
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Create deployment directory
+        run: |
+          mkdir -p _site
+          
+      - name: Copy files to deployment directory
+        run: |
+          # Copy the main HTML file
+          cp request-viewer.html _site/index.html
+          
+          # Create a simple landing page that explains the viewer
+          cat > _site/README.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>MSBench Result Viewer</title>
+              <style>
+                  body {
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                      max-width: 800px;
+                      margin: 0 auto;
+                      padding: 20px;
+                      line-height: 1.6;
+                      color: #333;
+                  }
+                  .header {
+                      text-align: center;
+                      margin-bottom: 40px;
+                  }
+                  .card {
+                      background: #f8f9fa;
+                      border: 1px solid #dee2e6;
+                      border-radius: 8px;
+                      padding: 20px;
+                      margin: 20px 0;
+                  }
+                  .btn {
+                      display: inline-block;
+                      background: #007bff;
+                      color: white;
+                      padding: 12px 24px;
+                      text-decoration: none;
+                      border-radius: 4px;
+                      margin: 10px 0;
+                  }
+                  .btn:hover {
+                      background: #0056b3;
+                  }
+                  code {
+                      background: #e9ecef;
+                      padding: 2px 6px;
+                      border-radius: 3px;
+                      font-family: 'Monaco', 'Menlo', monospace;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="header">
+                  <h1>MSBench Result Viewer</h1>
+                  <p>Interactive viewer for analyzing sim-requests files and function call patterns</p>
+                  <a href="index.html" class="btn">Launch Request Viewer</a>
+              </div>
+              
+              <div class="card">
+                  <h2>🚀 Quick Start</h2>
+                  <p>Use the Request Viewer to analyze your sim-requests files:</p>
+                  <ul>
+                      <li><strong>Drag & Drop:</strong> Simply drag your sim-requests file onto the viewer</li>
+                      <li><strong>Browse Files:</strong> Use the folder browser to scan directories</li>
+                      <li><strong>Search & Filter:</strong> Find specific function calls or response content</li>
+                      <li><strong>Navigate:</strong> Click on function calls to jump to specific requests</li>
+                  </ul>
+              </div>
+              
+              <div class="card">
+                  <h2>📁 File Support</h2>
+                  <p>The viewer supports:</p>
+                  <ul>
+                      <li>JSON files with request/response data</li>
+                      <li>Text files containing JSON arrays</li>
+                      <li>Files with names containing "sim-requests"</li>
+                  </ul>
+              </div>
+              
+              <div class="card">
+                  <h2>🔧 Local Development</h2>
+                  <p>For full functionality including folder scanning, run the Python web server:</p>
+                  <code>python3 web_server.py</code>
+                  <p>Then access the viewer at <code>http://localhost:8000</code></p>
+              </div>
+              
+              <div class="card">
+                  <h2>📖 Repository</h2>
+                  <p>View the source code and documentation on GitHub:</p>
+                  <a href="https://github.com/saragluna/msbench-result-viewer">GitHub Repository</a>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+
+  # Deployment job
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
