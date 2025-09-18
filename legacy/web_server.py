@@ -18,7 +18,13 @@ from urllib.parse import urlparse, parse_qs
 import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # Ensure output to console
+    ]
+)
 logger = logging.getLogger(__name__)
 
 class RequestViewerHandler(SimpleHTTPRequestHandler):
@@ -27,6 +33,10 @@ class RequestViewerHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         # Allow CORS for local development
         super().__init__(*args, **kwargs)
+    
+    def log_message(self, format, *args):
+        """Override to use our logger for all HTTP requests."""
+        logger.info(f"{self.address_string()} - {format % args}")
     
     def end_headers(self):
         """Add CORS headers to all responses."""
@@ -177,7 +187,7 @@ class RequestViewerHandler(SimpleHTTPRequestHandler):
         try:
             # Walk through all subdirectories
             for file_path in root_path.rglob('sim-requests-*.txt'):
-                logger.debug(f"Examining file: {file_path.name}")
+                logger.info(f"Examining file: {file_path.name}")
                 if sim_pattern.match(file_path.name):
                     try:
                         # Extract meaningful path information
@@ -195,13 +205,13 @@ class RequestViewerHandler(SimpleHTTPRequestHandler):
                         }
                         
                         sim_files.append(file_info)
-                        logger.debug(f"Added: {file_info['displayName']} -> {file_info['relativePath']}")
+                        logger.info(f"Added: {file_info['displayName']} -> {file_info['relativePath']}")
                         
                     except Exception as e:
                         logger.warning(f"Error processing file {file_path}: {e}")
                         continue
                 else:
-                    logger.debug(f"File {file_path.name} did not match pattern")
+                    logger.info(f"File {file_path.name} did not match pattern")
         
         except Exception as e:
             logger.error(f"Error scanning directory {root_folder}: {e}")
@@ -242,6 +252,10 @@ class RequestViewerHandler(SimpleHTTPRequestHandler):
             # If no conversation panel found, try to extract from javamigration folder
             if instance == 'unknown':
                 for part in path_parts:
+                    if part.startswith('javamigration.eval.x86_64.base.') and part.endswith('-output'):
+                        # Extract instance from javamigration.eval.x86_64.base.INSTANCE-output
+                        instance = part.replace('javamigration.eval.x86_64.base.', '').replace('-output', '')
+                        break
                     if part.startswith('javamigration.eval.x86_64.') and part.endswith('-output'):
                         # Extract instance from javamigration.eval.x86_64.INSTANCE-output
                         instance = part.replace('javamigration.eval.x86_64.', '').replace('-output', '')

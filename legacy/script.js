@@ -10,6 +10,24 @@ let responseFilteredCalls = [];
 let filteredSteps = []; // Array of indices for filtered steps
 let currentFilterIndex = -1; // Current position in filtered results
 
+// Cookie utilities
+function setCookie(name, value, days = 30) {
+    const expires = new Date();
+    expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+    document.cookie = `${name}=${encodeURIComponent(value)};expires=${expires.toUTCString()};path=/`;
+}
+
+function getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+    }
+    return null;
+}
+
 // Function to scan for available sim-requests files using the Python web server
 async function scanForSimRequestFiles(rootFolder = '') {
     try {
@@ -416,8 +434,28 @@ document.addEventListener('DOMContentLoaded', function() {
     setupNavigationEventListeners();
     
     // Set up search functionality (only once)
-    setupSearchFunctionality();            // Start with a scan of the current directory
-            scanForSimRequestFiles().then(() => {
+    setupSearchFunctionality();
+    
+    // Load saved root folder path from cookie
+    const savedRootFolder = getCookie('rootFolderPath');
+    if (savedRootFolder) {
+        document.getElementById('root-folder').value = savedRootFolder;
+        console.log('Loaded saved root folder path from cookie:', savedRootFolder);
+    }
+    
+    // Set up auto-save for root folder path with debounce
+    let rootFolderTimeout;
+    document.getElementById('root-folder').addEventListener('input', function() {
+        clearTimeout(rootFolderTimeout);
+        rootFolderTimeout = setTimeout(() => {
+            const rootFolder = this.value.trim();
+            setCookie('rootFolderPath', rootFolder);
+            console.log('Auto-saved root folder path to cookie:', rootFolder);
+        }, 1000); // Save after 1 second of no typing
+    });
+    
+    // Start with a scan of the current directory
+    scanForSimRequestFiles().then(() => {
                 // Set up the refresh button
                 document.getElementById('refresh-btn').addEventListener('click', loadSelectedFile);
                 
@@ -425,6 +463,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('scan-btn').addEventListener('click', async () => {
                     const rootFolder = document.getElementById('root-folder').value.trim();
                     console.log('Scan button clicked, root folder:', rootFolder);
+                    
+                    // Save the root folder path to cookie
+                    setCookie('rootFolderPath', rootFolder);
+                    console.log('Saved root folder path to cookie:', rootFolder);
                     
                     // Show loading state
                     const scanBtn = document.getElementById('scan-btn');
@@ -452,6 +494,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('refresh-btn').addEventListener('click', loadSelectedFile);
                 document.getElementById('scan-btn').addEventListener('click', async () => {
                     const rootFolder = document.getElementById('root-folder').value.trim();
+                    
+                    // Save the root folder path to cookie
+                    setCookie('rootFolderPath', rootFolder);
+                    console.log('Saved root folder path to cookie:', rootFolder);
+                    
                     await scanForSimRequestFiles(rootFolder);
                 });
             });
@@ -624,7 +671,7 @@ function resetDragDropArea() {
             });
             
             // Create function calls overview
-            createFunctionCallsOverview();
+            createTollCallsOverview();
             
             // Set up search functionality (clear any existing search state)
             document.getElementById('search-input').value = '';
@@ -656,13 +703,28 @@ function resetDragDropArea() {
 function setupNavigationEventListeners() {
     // Add event listeners for main navigation buttons
     document.getElementById('prev-btn-side').addEventListener('click', () => {
-        console.log('Previous button clicked - selectedFunctionCallIndex:', selectedFunctionCallIndex);
+        console.log('Previous button clicked - selectedFunctionCallIndex:', selectedFunctionCallIndex, 'currentFilterIndex:', currentFilterIndex, 'filteredSteps.length:', filteredSteps.length);
         if (selectedFunctionCallIndex >= 0) {
-            // Navigate through function calls sequence
-            if (selectedFunctionCallIndex > 0) {
-                selectFunctionCall(selectedFunctionCallIndex - 1);
+            // Check if we're in filtered mode
+            if (filteredSteps.length > 0) {
+                console.log('In filtered mode - currentFilterIndex:', currentFilterIndex);
+                // Navigate through filtered steps using currentFilterIndex
+                if (currentFilterIndex > 0) {
+                    currentFilterIndex--;
+                    const targetIndex = filteredSteps[currentFilterIndex];
+                    console.log('Moving to previous filtered item - new currentFilterIndex:', currentFilterIndex, 'targetIndex:', targetIndex);
+                    selectFunctionCall(targetIndex, true);
+                    updateFilterStatus();
+                } else {
+                    console.log('Already at first filtered function call');
+                }
             } else {
-                console.log('Already at first function call');
+                // Navigate through all function calls sequence
+                if (selectedFunctionCallIndex > 0) {
+                    selectFunctionCall(selectedFunctionCallIndex - 1);
+                } else {
+                    console.log('Already at first function call');
+                }
             }
         } else {
             console.log('Using legacy request navigation');
@@ -678,13 +740,29 @@ function setupNavigationEventListeners() {
     });
     
     document.getElementById('next-btn-side').addEventListener('click', () => {
-        console.log('Next button clicked - selectedFunctionCallIndex:', selectedFunctionCallIndex, 'allFunctionCalls.length:', allFunctionCalls.length);
+        console.log('Next button clicked - selectedFunctionCallIndex:', selectedFunctionCallIndex, 'currentFilterIndex:', currentFilterIndex, 'filteredSteps.length:', filteredSteps.length);
         if (selectedFunctionCallIndex >= 0) {
-            // Navigate through function calls sequence
-            if (selectedFunctionCallIndex < allFunctionCalls.length - 1) {
-                selectFunctionCall(selectedFunctionCallIndex + 1);
+            // Check if we're in filtered mode
+            if (filteredSteps.length > 0) {
+                console.log('In filtered mode - currentFilterIndex:', currentFilterIndex);
+                // Navigate through filtered steps using currentFilterIndex
+                if (currentFilterIndex < filteredSteps.length - 1) {
+                    currentFilterIndex++;
+                    const targetIndex = filteredSteps[currentFilterIndex];
+                    console.log('Moving to next filtered item - new currentFilterIndex:', currentFilterIndex, 'targetIndex:', targetIndex);
+                    selectFunctionCall(targetIndex, true);
+                    updateFilterStatus();
+                } else {
+                    console.log('Already at last filtered function call');
+                }
             } else {
-                console.log('Already at last function call');
+                console.log('In non-filtered mode - currentFilterIndex:', currentFilterIndex);
+                // Navigate through all function calls sequence
+                if (selectedFunctionCallIndex < allFunctionCalls.length - 1) {
+                    selectFunctionCall(selectedFunctionCallIndex + 1);
+                } else {
+                    console.log('Already at last function call');
+                }
             }
         } else {
             console.log('Using legacy request navigation');
@@ -704,7 +782,7 @@ function setupNavigationEventListeners() {
         if (filteredSteps.length > 0 && currentFilterIndex > 0) {
             currentFilterIndex--;
             const targetIndex = filteredSteps[currentFilterIndex];
-            selectFunctionCall(targetIndex);
+            selectFunctionCall(targetIndex, true);
             updateFilterStatus();
         }
     });
@@ -713,7 +791,7 @@ function setupNavigationEventListeners() {
         if (filteredSteps.length > 0 && currentFilterIndex < filteredSteps.length - 1) {
             currentFilterIndex++;
             const targetIndex = filteredSteps[currentFilterIndex];
-            selectFunctionCall(targetIndex);
+            selectFunctionCall(targetIndex, true);
             updateFilterStatus();
         }
     });
@@ -865,10 +943,15 @@ function updateSearchHighlighting() {
     
     // If no search terms, show all function calls
     if (!searchTerm && !responseSearchTerm) {
-        createFunctionCallsOverview();
+        createTollCallsOverview();
         filteredSteps = [];
         currentFilterIndex = -1;
         updateFilterNavigation();
+        // Reset navigation buttons to normal mode
+        if (selectedFunctionCallIndex >= 0) {
+            document.getElementById('prev-btn-side').disabled = selectedFunctionCallIndex === 0;
+            document.getElementById('next-btn-side').disabled = selectedFunctionCallIndex === allFunctionCalls.length - 1;
+        }
         return;
     }
     
@@ -907,6 +990,17 @@ function updateSearchHighlighting() {
     // Update filter navigation
     updateFilterNavigation();
     
+    // Update main navigation buttons for filtered mode
+    if (filteredSteps.length > 0 && selectedFunctionCallIndex >= 0) {
+        // Ensure currentFilterIndex is properly set and synced
+        const calculatedFilterIndex = filteredSteps.indexOf(selectedFunctionCallIndex);
+        if (calculatedFilterIndex !== -1) {
+            currentFilterIndex = calculatedFilterIndex;
+        }
+        document.getElementById('prev-btn-side').disabled = currentFilterIndex <= 0;
+        document.getElementById('next-btn-side').disabled = currentFilterIndex >= filteredSteps.length - 1;
+    }
+    
     // Clear the list and show filtered results
     listContainer.innerHTML = '';
     
@@ -924,7 +1018,7 @@ function updateSearchHighlighting() {
                 `Click to view request ${functionCall.requestIndex + 1} (no function calls)`;
             button.onclick = () => {
                 selectFunctionCall(originalIndex);
-                // Update filter index when clicking on filtered item
+                // Update filter index when clicking on filtered item - sync with global variable
                 currentFilterIndex = filteredSteps.indexOf(originalIndex);
                 updateFilterStatus();
             };
@@ -1106,7 +1200,7 @@ function darkenColor(color, percent) {
     return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
 }
 
-function createFunctionCallsOverview() {
+function createTollCallsOverview() {
     const overviewContainer = document.getElementById('function-calls-overview');
     const listContainer = document.getElementById('function-calls-list');
     
@@ -1155,11 +1249,17 @@ function createFunctionCallsOverview() {
     // Update search highlighting if there's an active search
     if (searchTerm || responseSearchTerm) {
         updateSearchHighlighting();
+    } else {
+        // Reset navigation buttons to normal mode when no filtering is active
+        if (selectedFunctionCallIndex >= 0) {
+            document.getElementById('prev-btn-side').disabled = selectedFunctionCallIndex === 0;
+            document.getElementById('next-btn-side').disabled = selectedFunctionCallIndex === allFunctionCalls.length - 1;
+        }
     }
 }
 
-function selectFunctionCall(index) {
-    console.log('selectFunctionCall called with index:', index, 'allFunctionCalls.length:', allFunctionCalls.length);
+function selectFunctionCall(index, fromNavigation = false) {
+    console.log('selectFunctionCall called with index:', index, 'fromNavigation:', fromNavigation, 'allFunctionCalls.length:', allFunctionCalls.length);
     selectedFunctionCallIndex = index;
     const functionCall = allFunctionCalls[index];
     
@@ -1167,10 +1267,27 @@ function selectFunctionCall(index) {
     currentRequestIndex = functionCall.requestIndex;
     document.getElementById('current-index').textContent = (index + 1); // Show function call sequence number
     
-    // Update navigation buttons based on function call sequence
-    document.getElementById('prev-btn-side').disabled = index === 0;
-    document.getElementById('next-btn-side').disabled = index === allFunctionCalls.length - 1;
-    console.log('Navigation buttons updated - prev disabled:', index === 0, 'next disabled:', index === allFunctionCalls.length - 1);
+    // Update currentFilterIndex if we're in filtered mode and this isn't from navigation
+    if (!fromNavigation && filteredSteps.length > 0) {
+        const newFilterIndex = filteredSteps.indexOf(index);
+        if (newFilterIndex !== -1) {
+            currentFilterIndex = newFilterIndex;
+            console.log('Updated currentFilterIndex to:', currentFilterIndex, 'for selected index:', index);
+        }
+    }
+    
+    // Update navigation buttons based on function call sequence or filtered steps
+    if (filteredSteps.length > 0) {
+        // When filtering is active, use currentFilterIndex for navigation buttons
+        document.getElementById('prev-btn-side').disabled = currentFilterIndex <= 0;
+        document.getElementById('next-btn-side').disabled = currentFilterIndex >= filteredSteps.length - 1;
+        console.log('Navigation buttons updated for filtered mode - currentFilterIndex:', currentFilterIndex, 'prev disabled:', currentFilterIndex <= 0, 'next disabled:', currentFilterIndex >= filteredSteps.length - 1);
+    } else {
+        // When not filtering, use full array
+        document.getElementById('prev-btn-side').disabled = index === 0;
+        document.getElementById('next-btn-side').disabled = index === allFunctionCalls.length - 1;
+        console.log('Navigation buttons updated for normal mode - prev disabled:', index === 0, 'next disabled:', index === allFunctionCalls.length - 1);
+    }
     
     // Update button styles
     document.querySelectorAll('.function-call-item').forEach((btn, btnIndex) => {
@@ -1188,7 +1305,13 @@ function selectFunctionCall(index) {
     
     // Preserve search filtering
     if (searchTerm || responseSearchTerm) {
+        // Store current filter index before updating search highlighting
+        const savedCurrentFilterIndex = currentFilterIndex;
         updateSearchHighlighting();
+        // Restore the filter index if it was valid
+        if (savedCurrentFilterIndex >= 0 && savedCurrentFilterIndex < filteredSteps.length) {
+            currentFilterIndex = savedCurrentFilterIndex;
+        }
         // Re-add selected class to the clicked button (it might have been removed by search filtering)
         const visibleButtons = document.querySelectorAll('.function-call-item');
         visibleButtons.forEach(btn => {
@@ -1431,6 +1554,18 @@ function renderRequest(index, highlightFunctionCallIndex = -1) {
                                 style="margin-left: 5px; background-color: #17a2b8;">📋 View Raw</button>`;
                 }
                 
+                // Add format button for create_file calls
+                if (call.name === 'create_file') {
+                    html += `<br>
+                        <button class="format-button" onclick="toggleFormattedView(${callIndex}, ${index})" 
+                                id="formatted-btn-${index}-${callIndex}" 
+                                title="Show formatted file content">📄 View Formatted</button>
+                        <button class="format-button" onclick="toggleRawFileView(${callIndex}, ${index})" 
+                                id="raw-file-btn-${index}-${callIndex}" 
+                                title="Show raw JSON arguments" 
+                                style="margin-left: 5px; background-color: #17a2b8;">📋 View Raw</button>`;
+                }
+                
                 if (call.arguments) {
                     html += `<pre id="function-args-${index}-${callIndex}">${escapeHtml(call.arguments)}</pre>`;
                 }
@@ -1453,6 +1588,24 @@ function renderRequest(index, highlightFunctionCallIndex = -1) {
     html += '</div>'; // End of response section
     
     container.innerHTML = html;
+    
+    // Auto-format: show diff view by default for replace_string_in_file function calls
+    try {
+        if (request.response && Array.isArray(request.response.copilotFunctionCalls)) {
+            request.response.copilotFunctionCalls.forEach((call, callIdx) => {
+                if (call && call.name === 'replace_string_in_file') {
+                    // Use existing diff view helper to render formatted diff immediately
+                    try {
+                        showDiffView(callIdx, index);
+                    } catch (e) {
+                        console.warn('Failed to auto-format replace_string_in_file call at index', callIdx, e);
+                    }
+                }
+            });
+        }
+    } catch (autoFormatErr) {
+        console.warn('Auto-format initialization error:', autoFormatErr);
+    }
     
     // Add click event listeners to all collapsible elements
     const collapsibles = document.getElementsByClassName('collapsible');
@@ -1829,6 +1982,202 @@ function showDiffView(callIndex, requestIndex) {
     } catch (error) {
         console.error('Failed to create diff view:', error);
         alert('Failed to parse function arguments for diff view: ' + error.message);
+    }
+}
+
+// Function to toggle between formatted and raw view for create_file
+function toggleFormattedView(callIndex, requestIndex) {
+    const preElement = document.getElementById(`function-args-${requestIndex}-${callIndex}`);
+    const formattedButton = document.getElementById(`formatted-btn-${requestIndex}-${callIndex}`);
+    const rawButton = document.getElementById(`raw-file-btn-${requestIndex}-${callIndex}`);
+    
+    if (!preElement || !formattedButton) return;
+    
+    const request = requests[requestIndex];
+    const functionCall = request.response.copilotFunctionCalls[callIndex];
+    
+    if (functionCall.name !== 'create_file') return;
+    
+    // Check current state
+    const isFormattedView = preElement.querySelector('.file-content-container') !== null;
+    
+    if (isFormattedView) {
+        // Switch to raw view
+        showRawFileView(callIndex, requestIndex);
+    } else {
+        // Switch to formatted view
+        showFormattedFileView(callIndex, requestIndex);
+    }
+}
+
+// Function to toggle between raw and formatted view for create_file
+function toggleRawFileView(callIndex, requestIndex) {
+    const preElement = document.getElementById(`function-args-${requestIndex}-${callIndex}`);
+    const formattedButton = document.getElementById(`formatted-btn-${requestIndex}-${callIndex}`);
+    const rawButton = document.getElementById(`raw-file-btn-${requestIndex}-${callIndex}`);
+    
+    if (!preElement || !rawButton) return;
+    
+    const request = requests[requestIndex];
+    const functionCall = request.response.copilotFunctionCalls[callIndex];
+    
+    if (functionCall.name !== 'create_file') return;
+    
+    // Check current state
+    const isFormattedView = preElement.querySelector('.file-content-container') !== null;
+    
+    if (isFormattedView) {
+        // Switch to raw view
+        showRawFileView(callIndex, requestIndex);
+    } else {
+        // Switch to formatted view
+        showFormattedFileView(callIndex, requestIndex);
+    }
+}
+
+// Function to show formatted file view for create_file
+function showFormattedFileView(callIndex, requestIndex) {
+    const request = requests[requestIndex];
+    const functionCall = request.response.copilotFunctionCalls[callIndex];
+    const preElement = document.getElementById(`function-args-${requestIndex}-${callIndex}`);
+    const formattedButton = document.getElementById(`formatted-btn-${requestIndex}-${callIndex}`);
+    const rawButton = document.getElementById(`raw-file-btn-${requestIndex}-${callIndex}`);
+    
+    try {
+        // Parse the function arguments
+        const args = typeof functionCall.arguments === 'string' 
+            ? JSON.parse(functionCall.arguments) 
+            : functionCall.arguments;
+        
+        const { filePath, content } = args;
+        
+        if (!filePath || content === undefined) {
+            alert('Missing filePath or content in function arguments');
+            return;
+        }
+        
+        // Determine file type for syntax highlighting hint
+        const fileExtension = filePath.split('.').pop().toLowerCase();
+        let languageClass = '';
+        let languageLabel = 'Text';
+        
+        switch (fileExtension) {
+            case 'js':
+                languageClass = 'language-javascript';
+                languageLabel = 'JavaScript';
+                break;
+            case 'ts':
+                languageClass = 'language-typescript';
+                languageLabel = 'TypeScript';
+                break;
+            case 'html':
+                languageClass = 'language-html';
+                languageLabel = 'HTML';
+                break;
+            case 'css':
+                languageClass = 'language-css';
+                languageLabel = 'CSS';
+                break;
+            case 'json':
+                languageClass = 'language-json';
+                languageLabel = 'JSON';
+                break;
+            case 'py':
+                languageClass = 'language-python';
+                languageLabel = 'Python';
+                break;
+            case 'java':
+                languageClass = 'language-java';
+                languageLabel = 'Java';
+                break;
+            case 'md':
+                languageClass = 'language-markdown';
+                languageLabel = 'Markdown';
+                break;
+            case 'yaml':
+            case 'yml':
+                languageClass = 'language-yaml';
+                languageLabel = 'YAML';
+                break;
+            case 'xml':
+                languageClass = 'language-xml';
+                languageLabel = 'XML';
+                break;
+            default:
+                languageClass = 'language-text';
+                languageLabel = 'Text';
+        }
+        
+        // Create the formatted view HTML
+        const formattedHtml = `
+            <div class="file-content-container">
+                <div class="diff-header">Created File Content</div>
+                <div style="padding: 8px 12px;">
+                    <span class="file-path">${escapeHtml(filePath)}</span>
+                    <span style="margin-left: 10px; background-color: #6c757d; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${languageLabel}</span>
+                </div>
+                
+                <div class="diff-section diff-new">
+                    <h4>📄 File Content</h4>
+                    <div class="diff-content ${languageClass}">${escapeHtml(content)}</div>
+                </div>
+            </div>
+        `;
+        
+        // Replace the function arguments with the formatted content
+        if (preElement) {
+            preElement.innerHTML = formattedHtml;
+            preElement.style.background = 'transparent';
+            preElement.style.border = 'none';
+            preElement.style.padding = '0';
+        }
+        
+        // Update button states
+        if (formattedButton) {
+            formattedButton.textContent = '✅ Formatted View';
+            formattedButton.style.backgroundColor = '#28a745';
+            formattedButton.title = 'Currently showing formatted view - click to switch to raw';
+        }
+        
+        if (rawButton) {
+            rawButton.textContent = '📋 Raw View';
+            rawButton.style.backgroundColor = '#17a2b8';
+            rawButton.title = 'Switch to raw JSON view';
+        }
+        
+    } catch (error) {
+        console.error('Failed to create formatted file view:', error);
+        alert('Failed to parse function arguments for formatted view: ' + error.message);
+    }
+}
+
+// Function to show raw file view for create_file
+function showRawFileView(callIndex, requestIndex) {
+    const request = requests[requestIndex];
+    const functionCall = request.response.copilotFunctionCalls[callIndex];
+    const preElement = document.getElementById(`function-args-${requestIndex}-${callIndex}`);
+    const formattedButton = document.getElementById(`formatted-btn-${requestIndex}-${callIndex}`);
+    const rawButton = document.getElementById(`raw-file-btn-${requestIndex}-${callIndex}`);
+    
+    // Show raw JSON arguments
+    if (preElement) {
+        preElement.innerHTML = escapeHtml(functionCall.arguments);
+        preElement.style.background = '#f8f8f8';
+        preElement.style.border = '1px solid #ddd';
+        preElement.style.padding = '10px';
+    }
+    
+    // Update button states
+    if (formattedButton) {
+        formattedButton.textContent = '📄 View Formatted';
+        formattedButton.style.backgroundColor = '#17a2b8';
+        formattedButton.title = 'Switch to formatted view';
+    }
+    
+    if (rawButton) {
+        rawButton.textContent = '✅ Raw View';
+        rawButton.style.backgroundColor = '#28a745';
+        rawButton.title = 'Currently showing raw JSON - click to switch to formatted';
     }
 }
 

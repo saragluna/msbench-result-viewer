@@ -684,3 +684,11 @@ label {
 .copy-tooltip.show {
     opacity: 1;
 }
+
+.file-content-container {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    margin: 10px 0;
+    overflow: hidden;
+}
