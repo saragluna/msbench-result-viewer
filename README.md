@@ -137,3 +137,56 @@ Scans a directory for sim-requests files.
 
 - Python 3.6 or later (uses standard library only)
 - Modern web browser with JavaScript enabled
+
+## GitHub Pages Deployment (Svelte/Vite App)
+
+This repository now includes a Svelte + Vite UI (in `src/`) that can be built and automatically deployed to GitHub Pages.
+
+### How it works
+
+1. A workflow at `.github/workflows/deploy.yml` builds the site on every push to `main` (or when manually dispatched) and publishes the `dist` output to GitHub Pages.
+2. The Vite config dynamically sets the correct `base` path when deployed under the repository subpath (e.g. `https://<user>.github.io/<repo>/`).
+
+### One‑time repository setup
+
+1. Go to your repository Settings → Pages.
+2. Set: Source = GitHub Actions (no branch selection needed when using the new Pages workflow).
+
+### Local development
+
+```bash
+npm install
+npm run dev
+```
+
+### Manual build test
+
+```bash
+VITE_BASE_PATH=/your-repo-name/ npm run build
+```
+
+The static files will be in `dist/`.
+
+### Custom domain (optional)
+
+If you add a CNAME:
+
+1. Create `public/CNAME` (or add to `dist` via a prebuild step) containing your domain.
+2. Update repository Pages settings with the custom domain.
+3. Remove/override `VITE_BASE_PATH` (leave it `/`).
+
+### SPA routing note
+
+If you later add client-side routes (e.g. using a router), you'll need a fallback `404.html` that rewrites to `index.html` (GitHub Pages serves `404.html` for unknown paths). Vite's default single-page output is fine now since there are no custom routes.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Page loads but assets 404 | Wrong `base` path | Ensure workflow sets `VITE_BASE_PATH=/<repo>/` or configure `base` manually in `vite.config.js` |
+| Blank page with console errors about MIME type | Old cache | Hard refresh / clear cache |
+| 404 on deep links after adding a router | Missing fallback | Add `404.html` copying the built `index.html` |
+
+---
+
+Legacy Python-based directory scanning UI (under `legacy/`) remains unchanged; the new Svelte app is for static result viewing enhancements.

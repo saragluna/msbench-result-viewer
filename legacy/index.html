@@ -4,10 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Request Viewer</title>
-    <link rel="stylesheet" href="styles.css">
+    <!-- Explicit relative path & cache-busting query to avoid GitHub Pages caching issues -->
+    <link rel="stylesheet" href="./legacy/styles.css?v=1">
 </head>
 <body>
-    <h1>Request Viewer</h1>
+    <h1>Request Viewer (Legacy)</h1>
+    <p style="margin-top:-10px;font-size:14px;color:#555;">If running on GitHub Pages you are in <strong>static mode</strong> (no directory scanning). Use drag & drop or paste JSON. <a href="../index.html">Go to new viewer</a>.</p>
     
     <!-- Drag and Drop File Upload -->
     <div id="drag-drop-area" class="drag-drop-area">
@@ -91,6 +93,8 @@
     <!-- Back to Top Button -->
     <button id="back-to-top" class="back-to-top" title="Back to top">↑</button>
     
-    <script src="script.js"></script>
+    <!-- Defer script execution until after parsing to avoid race conditions -->
+    <script src="./legacy/script.js?v=1" defer></script>
+        
 </body>
 </html>

@@ -1,4 +1,26 @@
 // Global variables
+// --- Static hosting detection (GitHub Pages / file://) ---------------------------------
+// When hosted on GitHub Pages (no Python backend) or opened via file://, the legacy viewer
+// can't use /api/scan or /api/file. In that case we switch to a reduced "static mode"
+// where only drag & drop or manual paste is supported.
+const STATIC_MODE = window.location.hostname.endsWith('github.io') || window.location.protocol === 'file:';
+let staticModeNotified = false;
+
+function notifyStaticModeOnce() {
+    if (staticModeNotified) return;
+    staticModeNotified = true;
+    const container = document.getElementById('request-container');
+    if (container) {
+        const msg = document.createElement('div');
+        msg.className = 'info';
+        msg.style.cssText = 'border:1px solid #bcd; background:#eef7ff; padding:12px; border-radius:6px; margin-bottom:15px;';
+        msg.innerHTML = '<strong>Static Mode:</strong> Directory scanning and absolute path loading are disabled here. Use drag & drop, the file picker, or paste JSON.';
+        container.prepend(msg);
+    }
+    // Hide folder scanning UI because it will not work without backend
+    const folderOptions = document.querySelector('.folder-options');
+    if (folderOptions) folderOptions.style.display = 'none';
+}
 let currentRequestIndex = 0;
 let requests = [];
 let allFunctionCalls = [];
@@ -30,6 +52,19 @@ function getCookie(name) {
 
 // Function to scan for available sim-requests files using the Python web server
 async function scanForSimRequestFiles(rootFolder = '') {
+    if (STATIC_MODE) {
+        console.log('[Legacy Viewer] Static mode detected – skipping backend scan. rootFolder parameter ignored.');
+        notifyStaticModeOnce();
+        // Provide a neutral dropdown option so UI remains consistent
+        const selectElement = document.getElementById('file-select');
+        if (selectElement && selectElement.options.length === 0) {
+            const option = document.createElement('option');
+            option.value = 'sim-requests-0.txt';
+            option.textContent = 'Select or drop a file…';
+            selectElement.appendChild(option);
+        }
+        return false;
+    }
     try {
         console.log("Scanning for sim-requests files in folder:", rootFolder || "current directory");
         
