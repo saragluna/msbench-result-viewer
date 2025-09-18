@@ -97,6 +97,8 @@ function buildColorMap() {
 export function colorForTool(name) {
   if (!name) return '#6b7280';
   if (name === 'None') return '#000000'; // explicit per latest requirement
+  if (name === 'analyze_files_and_patterns') return '#2563eb'; // reserved blue-like color for analyze_files_and_patterns
+  if (name === 'patch_file') return '#7c3aed'; // reserved purple-like color for patch_file inference
   const key = String(name).trim();
   const lower = key.toLowerCase();
   const map = buildColorMap();

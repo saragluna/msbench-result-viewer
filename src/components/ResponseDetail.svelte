@@ -5,6 +5,146 @@
   export let current;
   export let req;
 
+  // Detect if request has a system message matching the special analyzer instruction
+  $: hasAnalyzeFilesSystemMsg = (() => {
+    if (!req?.requestMessages) return false;
+    return req.requestMessages.some(m => m.role === 'system' && Array.isArray(m.content) && m.content.some(c => (c?.text || c) === 'You are an expert at analyzing files and patterns.'));
+  })();
+
+  // If tool name is 'none' but special system message present, display analyze_files_and_patterns
+  function displayToolName(call) {
+    if (!call) return '';
+    const name = call.name || call.function?.name;
+  if ((!name || name.toLowerCase() === 'none') && hasAnalyzeFilesSystemMsg) return 'analyze_files_and_patterns';
+  if ((!name || name.toLowerCase() === 'none') && responseTextParts && responseTextParts.length && isPatchLike(responseTextParts[0])) return 'patch_file';
+    return name || 'None';
+  }
+
+  // Formatted response text: if analyze scenario and looks like patch block, reuse patch formatting from ToolCallArgs logic lightly
+  function isPatchLike(text) {
+    return typeof text === 'string' && /\*\*\* Begin Patch[\s\S]*\*\*\* End Patch/.test(text);
+  }
+  function extractPatch(text) {
+    if (!isPatchLike(text)) return '';
+    const m = text.match(/\*\*\* Begin Patch[\s\S]*?\*\*\* End Patch/);
+    return m ? m[0] : '';
+  }
+  function parsePatchBlocks(text) {
+    if (!text) return [];
+    const beginIdx = text.indexOf('*** Begin Patch');
+    const endIdx = text.indexOf('*** End Patch');
+    if (beginIdx !== -1 && endIdx !== -1) {
+      text = text.slice(beginIdx + '*** Begin Patch'.length, endIdx).trim();
+    }
+    const lines = text.split(/\r?\n/);
+    const fileHeader = /^\*\*\* (Update|Add|Delete) File: (.+)$/;
+    const blocks = [];
+    let current = null;
+    for (const line of lines) {
+      const mm = line.match(fileHeader);
+      if (mm) {
+        if (current) blocks.push(current);
+        current = { action: mm[1], filePath: mm[2].trim(), body: [] };
+      } else if (current) {
+        current.body.push(line);
+      }
+    }
+    if (current) blocks.push(current);
+    return blocks.map(b => ({ ...b, body: b.body.join('\n').replace(/^[\n\r]+|[\n\r]+$/g, '') }));
+  }
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+  function highlightPatchBody(body) {
+    if (!body) return '';
+    return body.split(/\n/).map(line => {
+      const esc = escapeHtml(line) || '&nbsp;';
+      let cls = 'ctx';
+      if (line.startsWith('+')) cls = 'add';
+      else if (line.startsWith('-')) cls = 'del';
+      else if (line.startsWith('@@')) cls = 'hunk';
+      return `<span class="pl ${cls}">${esc}</span>`;
+    }).join('\n');
+  }
+  $: responseTextParts = req?.response?.value || [];
+  $: patchVisualizationBlocks = hasAnalyzeFilesSystemMsg ? responseTextParts.filter(t => isPatchLike(t)).flatMap(t => parsePatchBlocks(extractPatch(t))) : [];
+
+  // --- Fenced code block parsing & JSON pretty display (for analyze_files_and_patterns scenario) ---
+  function parseFencedBlocks(text) {
+    if (typeof text !== 'string') return [{ type: 'text', content: text }];
+    const re = /```(\w+)?\n([\s\S]*?)```/g;
+    const out = [];
+    let lastIdx = 0; let m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > lastIdx) {
+        const pre = text.slice(lastIdx, m.index);
+        if (pre.trim().length) out.push({ type: 'text', content: pre });
+      }
+      out.push({ type: 'code', lang: (m[1] || '').toLowerCase(), raw: m[2] });
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastIdx < text.length) {
+      const tail = text.slice(lastIdx);
+      if (tail.trim().length) out.push({ type: 'text', content: tail });
+    }
+    return out.length ? out : [{ type: 'text', content: text }];
+  }
+
+  function tryParseJSON(str) {
+    try { return JSON.parse(str); } catch { return null; }
+  }
+  function escapeHTML(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function highlightJSON(value) {
+    // Simple syntax highlighter turning JSON value into HTML with spans
+    const json = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    return escapeHTML(json).replace(/^(\s*)("[^"]+"?)(:)?(.*)$/gm, (line, indent, key, colon, rest) => {
+      let html = indent || '';
+      const isKey = /^".*"$/.test(key) && colon;
+      if (isKey) html += `<span class=\"j-key\">${escapeHTML(key)}</span>${colon}`;
+      else html += `<span class=\"j-lit\">${escapeHTML(key + (colon || ''))}</span>`;
+      if (rest) {
+        // classify rest (string/number/boolean/null/structure)
+        const trimmed = rest.trim();
+        let cls = 'j-lit';
+        if (/^".*"[,]?$/.test(trimmed)) cls = 'j-str';
+        else if (/^(true|false|null)[,]?$/.test(trimmed)) cls = 'j-bool';
+        else if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?[,]?$/.test(trimmed)) cls = 'j-num';
+        else if (/^[\[{]$/.test(trimmed)) cls = 'j-brkt';
+        else if (/^[\]}][,]?$/.test(trimmed)) cls = 'j-brkt';
+        html += ` <span class=\"${cls}\">${escapeHTML(rest)}</span>`;
+      }
+      return html;
+    });
+  }
+  // Extract unescaped string snippets from parsed JSON object root (one level)
+  function extractMultilineSnippets(obj) {
+    if (!obj || typeof obj !== 'object') return [];
+    const snippets = [];
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof v === 'string' && /\n/.test(v) ) {
+        // Already real newlines OR escaped? Convert escaped \n into real newline if present
+        let content = v;
+        // If the string includes literal backslash-n sequences and very few actual newlines
+        const backslashNewlineCount = (content.match(/\\n/g) || []).length;
+        if (backslashNewlineCount && backslashNewlineCount > (content.match(/\n/g) || []).length) {
+          content = content.replace(/\\n/g, '\n');
+        }
+        // Remove BOM if present
+        content = content.replace(/^\uFEFF/, '');
+        snippets.push({ key: k, value: content });
+      }
+    }
+    return snippets;
+  }
+  $: fencedBlocksPerPart = hasAnalyzeFilesSystemMsg ? responseTextParts.map(p => parseFencedBlocks(p)) : [];
+  $: hasAnyFenced = hasAnalyzeFilesSystemMsg && fencedBlocksPerPart.some(list => list.some(seg => seg.type === 'code'));
+  let fenceRawState = {}; // key by composite index
+
   function scrollToAnchor(id) {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -142,7 +282,76 @@
         <details class="collapsible" open data-role="response-text" aria-label="Response text group">
           <summary><span class="caret"></span><h3>Response Text</h3></summary>
           <div class="collapsible-body">
-            <pre class="code-block">{req.response.value.join('\n')}</pre>
+            {#if hasAnalyzeFilesSystemMsg && patchVisualizationBlocks.length}
+              <div class="analyze-files-response" aria-label="Analyze files and patterns formatted output">
+                {#each patchVisualizationBlocks as blk, bi}
+                  <div class="patch-file" data-action={blk.action} data-idx={bi}>
+                    <div class="patch-head">
+                      <span class="patch-action tag-{blk.action.toLowerCase()}">{blk.action}</span>
+                      <span class="patch-path" title={blk.filePath}>{blk.filePath}</span>
+                    </div>
+                    {#if blk.action === 'Delete'}
+                      <div class="patch-deleted-note">File deleted</div>
+                    {:else if blk.body}
+                      <pre class="patch-code" aria-label={blk.action + ' file diff'}>{@html highlightPatchBody(blk.body)}</pre>
+                    {:else}
+                      <div class="patch-empty">(No content changes captured)</div>
+                    {/if}
+                  </div>
+                {/each}
+                <details class="raw-response-text" open>
+                  <summary>Show Raw Combined Text</summary>
+                  <pre class="code-block small" style="margin-top:6px;">{req.response.value.join('\n')}</pre>
+                </details>
+              </div>
+            {:else if hasAnalyzeFilesSystemMsg && hasAnyFenced}
+              <div class="analyze-files-response" aria-label="Analyze files and patterns fenced code rendering">
+                {#each fencedBlocksPerPart as blocks, pi}
+                  {#each blocks as seg, si}
+                    {#if seg.type === 'code' && (seg.lang === 'json' || seg.lang === 'javascript' || seg.lang === 'js')}
+                      {#if tryParseJSON(seg.raw)}
+                        {#key 'json-'+pi+'-'+si}
+                          <script context="module"></script>
+                          {#await Promise.resolve(tryParseJSON(seg.raw)) then parsed}
+                            <div class="json-block" data-lang={seg.lang}>
+                              <div class="json-head">
+                                <span class="json-label">JSON Block</span>
+                                <button type="button" class="mini-btn json-raw-toggle" on:click={() => fenceRawState[pi+'-'+si] = !fenceRawState[pi+'-'+si]}> {fenceRawState[pi+'-'+si] ? 'Pretty' : 'Raw'} </button>
+                              </div>
+                              {#if fenceRawState[pi+'-'+si]}
+                                <pre class="code-block small">{seg.raw}</pre>
+                              {:else}
+                                <pre class="code-block small json-pre" aria-label="Pretty JSON" >{@html highlightJSON(parsed)}</pre>
+                                {#each extractMultilineSnippets(parsed) as snip}
+                                  <details class="snippet-details" open>
+                                    <summary><span class="snippet-key">{snip.key}</span> <span class="snippet-extra">({snip.value.split('\n').length} lines)</span></summary>
+                                    <pre class="code-block tiny" data-snippet-key={snip.key}>{snip.value}</pre>
+                                  </details>
+                                {/each}
+                              {/if}
+                            </div>
+                          {/await}
+                        {/key}
+                      {:else}
+                        <div class="code-fallback">
+                          <div class="code-head"><span class="code-label">{seg.lang || 'code'}</span></div>
+                          <pre class="code-block small">{seg.raw}</pre>
+                        </div>
+                      {/if}
+                    {:else if seg.type === 'code'}
+                      <div class="code-fallback">
+                        <div class="code-head"><span class="code-label">{seg.lang || 'code'}</span></div>
+                        <pre class="code-block small">{seg.raw}</pre>
+                      </div>
+                    {:else if seg.type === 'text'}
+                      <pre class="code-block small plain-text">{seg.content}</pre>
+                    {/if}
+                  {/each}
+                {/each}
+              </div>
+            {:else}
+              <pre class="code-block">{req.response.value.join('\n')}</pre>
+            {/if}
           </div>
         </details>
       </section>
@@ -160,7 +369,7 @@
                 <section class="toolcall-section {current.callIndex === ci ? 'active' : ''}" id={'resp-fncall-' + ci} data-call-id={call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)}>
                   <header class="toolcall-head">
                     <div class="tool-title-area">
-                      <h5 class="no-transform">Call {ci + 1}: {call.name}</h5>
+                      <h5 class="no-transform">Call {ci + 1}: {displayToolName(call)} {#if (hasAnalyzeFilesSystemMsg && (call.name?.toLowerCase?.() === 'none')) || displayToolName(call) === 'patch_file'}<span class="infer-badge" title="Inferred tool name">INFERRED</span>{/if}</h5>
                       {#if current.callIndex === ci}<span class="selected-badge">Active</span>{/if}
                     </div>
                   </header>
@@ -290,6 +499,83 @@
 .tool-title-area { display:flex; align-items:center; gap:10px; }
 .toolcall-head h5 { margin:0; font-size:.72rem; letter-spacing:.5px; font-weight:700; }
 .toolcall-head h5.no-transform { text-transform: none; }
+/* Inferred badge */
+.infer-badge { background:#7c3aed; color:#fff; font-size:.45rem; letter-spacing:.6px; padding:3px 6px; border-radius:10px; font-weight:700; vertical-align:middle; position:relative; top:-1px; }
+@media (prefers-color-scheme: dark) { .infer-badge { background:#7c3aed; color:#f1f5f9; } }
+/* Analyze files & patterns special formatted output (patch-like reused styles) */
+.analyze-files-response { display:flex; flex-direction:column; gap:10px; }
+.analyze-files-response .patch-file { border:1px solid #dee2e6; border-radius:6px; background:#f8f9fa; box-shadow:0 1px 2px rgba(0,0,0,0.05); overflow:hidden; }
+.analyze-files-response .patch-head { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#e9ecef; border-bottom:1px solid #dee2e6; font-weight:600; font-size:.72rem; font-family:monospace; }
+.analyze-files-response .patch-action { text-transform:uppercase; font-size:.55rem; letter-spacing:.6px; padding:3px 6px; border-radius:10px; font-weight:700; }
+.analyze-files-response .patch-action.tag-update { background:#dbeafe; color:#1e3a8a; }
+.analyze-files-response .patch-action.tag-add { background:#dcfce7; color:#166534; }
+.analyze-files-response .patch-action.tag-delete { background:#fee2e2; color:#991b1b; }
+.analyze-files-response .patch-path { font-family:monospace; font-size:.6rem; background:#343a40; color:#f8f9fa; padding:3px 6px; border-radius:4px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.analyze-files-response .patch-code { background:#fff; margin:0; padding:8px 10px; font-family:monospace; font-size:.68rem; line-height:1.25; overflow:auto; max-height:320px; border-top:1px solid #f1f3f5; }
+.analyze-files-response .patch-code::-webkit-scrollbar { height:8px; width:8px; }
+.analyze-files-response .patch-code::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:6px; }
+.analyze-files-response .patch-code::-webkit-scrollbar-thumb:hover { background:#94a3b8; }
+.analyze-files-response .patch-deleted-note { padding:10px 12px; font-size:.65rem; font-style:italic; color:#7f1d1d; background:#fff1f2; }
+.analyze-files-response .patch-empty { padding:10px; font-size:.65rem; opacity:.6; }
+.analyze-files-response :global(.patch-code .pl) { display:block; padding:0 6px; border-left:4px solid transparent; }
+.analyze-files-response :global(.patch-code .pl.add) { background:#ecfdf5; color:#065f46; border-left-color:#10b981; }
+.analyze-files-response :global(.patch-code .pl.del) { background:#fef2f2; color:#991b1b; border-left-color:#dc2626; }
+.analyze-files-response :global(.patch-code .pl.hunk) { background:#eff6ff; color:#1e3a8a; border-left-color:#3b82f6; font-weight:600; }
+.analyze-files-response :global(.patch-code .pl.ctx) { color:#374151; }
+.analyze-files-response .raw-response-text { border:1px solid var(--color-border); border-radius:6px; background:rgba(0,0,0,0.02); padding:4px 8px 8px; }
+.analyze-files-response .raw-response-text > summary { list-style:none; cursor:pointer; font-size:.6rem; font-weight:600; letter-spacing:.5px; }
+.analyze-files-response .raw-response-text > summary::-webkit-details-marker { display:none; }
+@media (prefers-color-scheme: dark) {
+  .analyze-files-response .patch-file { background:#1e293b; border-color:#334155; }
+  .analyze-files-response .patch-head { background:#0f172a; border-bottom-color:#334155; }
+  .analyze-files-response .patch-path { background:#475569; color:#f1f5f9; }
+  .analyze-files-response .patch-code { background:#0f172a; border-top-color:#1e293b; }
+  .analyze-files-response :global(.patch-code .pl.ctx) { color:#cbd5e1; }
+  .analyze-files-response :global(.patch-code .pl.add) { background:rgba(16,185,129,0.15); color:#6ee7b7; border-left-color:#10b981; }
+  .analyze-files-response :global(.patch-code .pl.del) { background:rgba(220,38,38,0.15); color:#fca5a5; border-left-color:#dc2626; }
+  .analyze-files-response :global(.patch-code .pl.hunk) { background:rgba(59,130,246,0.18); color:#93c5fd; border-left-color:#3b82f6; }
+  .analyze-files-response .patch-deleted-note { background:#7f1d1d; color:#fecaca; }
+  .analyze-files-response .raw-response-text { background:rgba(255,255,255,0.06); }
+}
+/* JSON fenced block formatting */
+.json-block { border:1px solid var(--color-border); border-radius:6px; background:rgba(0,0,0,0.02); padding:6px 8px 10px; display:flex; flex-direction:column; gap:6px; }
+.json-head { display:flex; align-items:center; justify-content:space-between; }
+.json-label { font-size:.55rem; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color: var(--color-text-soft); }
+.json-pre { white-space:pre; overflow:auto; max-height:400px; }
+.json-pre::-webkit-scrollbar { height:8px; width:8px; }
+.json-pre::-webkit-scrollbar-thumb { background: var(--color-border); border-radius:6px; }
+.snippet-details { border:1px solid var(--color-border); border-radius:6px; background:rgba(0,0,0,0.03); padding:4px 6px 6px; }
+.snippet-details > summary { cursor:pointer; list-style:none; font-size:.55rem; font-weight:600; letter-spacing:.5px; }
+.snippet-details > summary::-webkit-details-marker { display:none; }
+.snippet-details[open] { background:rgba(0,0,0,0.05); }
+.snippet-details pre { margin:6px 0 0; }
+.snippet-key { background:#1e3a8a; color:#fff; padding:2px 6px; border-radius:10px; font-size:.5rem; letter-spacing:.5px; }
+.snippet-extra { font-size:.5rem; color: var(--color-text-soft); margin-left:6px; }
+.code-fallback { border:1px solid var(--color-border); border-radius:6px; padding:6px 8px 8px; background:rgba(0,0,0,0.02); }
+.code-head { margin:0 0 4px; font-size:.55rem; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color: var(--color-text-soft); display:flex; align-items:center; gap:6px; }
+.code-label { background:#334155; color:#fff; padding:2px 6px; border-radius:10px; font-size:.5rem; letter-spacing:.5px; }
+.plain-text { background:rgba(0,0,0,0.02); }
+/* JSON syntax colors */
+:global(.j-key) { color:#2563eb; font-weight:600; }
+:global(.j-str) { color:#047857; }
+:global(.j-bool) { color:#be123c; font-weight:600; }
+:global(.j-num) { color:#7c2d12; }
+:global(.j-brkt) { color:#6b21a8; font-weight:600; }
+:global(.j-lit) { color:#374151; }
+@media (prefers-color-scheme: dark) {
+  .json-block { background:rgba(255,255,255,0.05); }
+  .snippet-details { background:rgba(255,255,255,0.04); }
+  .snippet-details[open] { background:rgba(255,255,255,0.07); }
+  .code-fallback { background:rgba(255,255,255,0.05); }
+  .plain-text { background:rgba(255,255,255,0.05); }
+  .snippet-key { background:#1e3a8a; }
+  :global(.j-key) { color:#60a5fa; }
+  :global(.j-str) { color:#34d399; }
+  :global(.j-bool) { color:#f87171; }
+  :global(.j-num) { color:#fbbf24; }
+  :global(.j-brkt) { color:#c084fc; }
+  :global(.j-lit) { color:#cbd5e1; }
+}
 .result-toggle { background: var(--color-accent-soft); color: var(--color-accent); border:1px solid var(--color-accent); font-size:.55rem; font-weight:600; letter-spacing:.4px; padding:4px 8px; border-radius: var(--radius-pill); cursor:pointer; }
 .result-toggle:hover { background: var(--color-accent); color:#fff; }
 @media (prefers-color-scheme: dark) {

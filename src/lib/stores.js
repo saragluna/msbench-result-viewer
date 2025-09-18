@@ -4,6 +4,7 @@ import { colorForTool } from './toolColors.js';
 // Special override color for failed responses
 const FAILED_REQUEST_COLOR = '#dc2626';
 const CONVERSATION_SUMMARY_COLOR = '#9333ea'; // unique purple used only for conversation summary pseudo tool
+const INFERRED_TOOL_COLOR = '#7c3aed'; // unified purple for all inferred tool names
 
 export const requests = writable([]); // raw loaded request objects
 export const functionCalls = writable([]); // flattened calls + placeholders
@@ -262,12 +263,40 @@ export function loadDataFromText(text) {
   // build flattened calls
   const flattened = [];
   data.forEach((req, rIndex) => {
+    // Detect special analyze-files system message
+    const hasAnalyzeFilesSystemMsg = (() => {
+      const target = 'You are an expert at analyzing files and patterns.';
+      if (!req?.requestMessages) return false;
+      for (const m of req.requestMessages) {
+        if (m?.role !== 'system' || !Array.isArray(m.content)) continue;
+        for (const c of m.content) {
+          const txt = (typeof c === 'string' ? c : c?.text) || '';
+          if (txt.trim() === target) return true;
+        }
+      }
+      return false;
+    })();
+  // Detect patch-like response (*** Begin Patch ... *** End Patch) for patch_file inference
+  const responseJoined = Array.isArray(req?.response?.value) ? req.response.value.join('\n') : (req?.response?.value || '');
+  const hasPatchBlock = typeof responseJoined === 'string' && /\*\*\* Begin Patch[\s\S]*\*\*\* End Patch/.test(responseJoined);
     const calls = safeArray(req.response?.copilotFunctionCalls);
-  if (calls.length) {
+    if (calls.length) {
       calls.forEach((call, ci) => {
-        const nm = call.name || 'Unknown Function';
-        let clr = colorForTool(nm) || hashColor(nm);
-        if (req?.response?.type === 'failed') clr = FAILED_REQUEST_COLOR;
+        let rawName = call.name || call.function?.name || 'Unknown Function';
+        // Normalize 'none' when special system message present
+        let inferred = false;
+        if (hasAnalyzeFilesSystemMsg && rawName && rawName.toLowerCase() === 'none') {
+          rawName = 'analyze_files_and_patterns';
+          inferred = true;
+        } else if (hasPatchBlock && rawName && rawName.toLowerCase() === 'none') {
+          rawName = 'patch_file';
+          inferred = true;
+        }
+        const nm = rawName;
+  let clr = colorForTool(nm) || hashColor(nm);
+  const failed = req?.response?.type === 'failed';
+  if (inferred && !failed) clr = INFERRED_TOOL_COLOR;
+  if (failed) clr = FAILED_REQUEST_COLOR;
         flattened.push({
           requestIndex: rIndex,
           callIndex: ci,
@@ -275,11 +304,12 @@ export function loadDataFromText(text) {
           arguments: call.arguments,
           request: req,
           hasFunction: true,
-          color: clr
+          color: clr,
+          inferred
         });
       });
     } else {
-      // No function calls: decide between conversation summary pseudo-tool or 'None'
+      // No function calls: decide between conversation summary pseudo-tool, analyze_files_and_patterns synthetic, or 'None'
       const responseValue = Array.isArray(req?.response?.value) ? req.response.value.join('\n') : (req?.response?.value || '');
       const isConversationSummary = typeof responseValue === 'string' && responseValue.trim().startsWith('<analysis>');
       if (isConversationSummary) {
@@ -295,9 +325,41 @@ export function loadDataFromText(text) {
             conversationSummary: true,
             color: clr
         });
+      } else if (hasAnalyzeFilesSystemMsg) {
+        // Synthesize analyze_files_and_patterns pseudo-tool to satisfy display requirement
+  let clr = colorForTool('analyze_files_and_patterns');
+  const failed = req?.response?.type === 'failed';
+  if (!failed) clr = INFERRED_TOOL_COLOR; else clr = FAILED_REQUEST_COLOR;
+        flattened.push({
+          requestIndex: rIndex,
+          callIndex: -1,
+          name: 'analyze_files_and_patterns',
+          arguments: null,
+          request: req,
+          hasFunction: true, // mark as function so color refresh uses palette
+          synthetic: true,
+          inferred: true,
+          color: clr
+        });
+      } else if (hasPatchBlock) {
+        // Synthesize patch_file pseudo-tool if patch content but no calls
+  let clr = colorForTool('patch_file');
+  const failed = req?.response?.type === 'failed';
+  if (!failed) clr = INFERRED_TOOL_COLOR; else clr = FAILED_REQUEST_COLOR;
+        flattened.push({
+          requestIndex: rIndex,
+          callIndex: -1,
+          name: 'patch_file',
+          arguments: null,
+          request: req,
+          hasFunction: true,
+          synthetic: true,
+          inferred: true,
+          color: clr
+        });
       } else {
-        let noneColor = '#000000';
-        if (req?.response?.type === 'failed') noneColor = FAILED_REQUEST_COLOR; // highlight failed even if no tool
+  let noneColor = '#000000';
+  if (req?.response?.type === 'failed') noneColor = FAILED_REQUEST_COLOR; // highlight failed even if no tool
         flattened.push({
           requestIndex: rIndex,
           callIndex: -1,
@@ -323,6 +385,13 @@ export function refreshToolColors() {
       return { ...c, color: failed ? FAILED_REQUEST_COLOR : CONVERSATION_SUMMARY_COLOR };
     }
     if (!c.hasFunction) return { ...c, color: failed ? FAILED_REQUEST_COLOR : '#000000' }; // None placeholder
+    if (c.inferred && !failed) {
+      return { ...c, color: INFERRED_TOOL_COLOR };
+    }
+    if (c.name === 'analyze_files_and_patterns' || c.name === 'patch_file') {
+      const base = colorForTool(c.name);
+      return { ...c, color: failed ? FAILED_REQUEST_COLOR : base };
+    }
     const base = colorForTool(c.name) || c.color;
     return { ...c, color: failed ? FAILED_REQUEST_COLOR : base };
   }));

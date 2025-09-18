@@ -65,6 +65,27 @@
     return arr;
   })();
 
+  // Helper to detect special analyzer system message on a request
+  function hasAnalyzeFilesSystemMsg(request) {
+    const target = 'You are an expert at analyzing files and patterns.';
+    if (!request?.requestMessages) return false;
+    for (const m of request.requestMessages) {
+      if (m?.role !== 'system' || !Array.isArray(m.content)) continue;
+      for (const c of m.content) {
+        const txt = (typeof c === 'string' ? c : c?.text) || '';
+        if (txt.trim() === target) return true;
+      }
+    }
+    return false;
+  }
+  function displayCallName(call) {
+    if (!call) return '';
+    if ((call.name === 'None' || (call.name && call.name.toLowerCase() === 'none')) && hasAnalyzeFilesSystemMsg(call.request)) {
+      return 'analyze_files_and_patterns';
+    }
+    return call.name;
+  }
+
   // Map each grouped request to round & metadata (formerly removed during refactor)
   $: requestRoundMap = groups.map(g => {
     const rid = g.request?.response?.requestId || `__noid_${g.requestIndex}`;
@@ -151,7 +172,7 @@
             aria-label={'Tool call ' + (call.name || 'None') + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
             on:click={() => selectCall(call.originalIndex)}>
             <span class="num">{call.originalIndex + 1}</span>
-            <span class="name">{call.name}</span>
+            <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
             {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
             {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
           </button>
@@ -186,7 +207,7 @@
           aria-label={'Tool call ' + (call.name || 'None') + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
                     on:click={() => selectCall(call.originalIndex)}>
                     <span class="num">{call.originalIndex + 1}</span>
-                    <span class="name">{call.name}</span>
+                    <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
                     {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
           {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
                   </button>
@@ -207,7 +228,7 @@
         aria-label={'Tool call ' + (call.name || 'None') + ' (single-call request)' + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
                 on:click={() => selectCall(call.originalIndex)}>
                 <span class="num">{call.originalIndex + 1}</span>
-                <span class="name">{call.name}</span>
+                <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
                 {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
         {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
               </button>
@@ -548,6 +569,10 @@ button .name {
   max-width: 110px;
   letter-spacing: .25px;
 }
+.infer-badge { background:#7c3aed; color:#fff; font-size:.48rem; padding:2px 4px; border-radius:6px; font-weight:700; letter-spacing:.5px; line-height:1; display:inline-flex; align-items:center; }
+button.topchip .infer-badge { background:#7c3aed; }
+button.selected .infer-badge, button.topchip.selected .infer-badge { filter:brightness(1.1); }
+@media (prefers-color-scheme: dark) { .infer-badge { background:#7c3aed; color:#f8f9fa; } }
 
 /* Failed response emoji indicator */
 .fail-emoji { font-size:.7rem; line-height:1; display:inline-flex; align-items:center; margin-left:2px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.25)); }
