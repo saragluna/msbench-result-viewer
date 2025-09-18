@@ -1,0 +1,75 @@
+# --- Node & Vite build artifacts ---
+node_modules/
+dist/
+dist-ssr/
+build/
+.svelte-kit/
+
+# Vite / cache
+vite.config.*.timestamp-*
+.cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Coverage / test
+coverage/
+.nyc_output/
+.coverage/
+
+# TypeScript / diagnostics
+*.tsbuildinfo
+
+# Environment / secrets (keep an example file committed separately if needed)
+.env
+.env.*
+!.env.example
+
+# Editor / IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python legacy (web_server.py support)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+.envrc
+
+# Optional local tooling
+.turbo/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# Merge / patch artifacts
+*.orig
+*.rej
+
+# Swap / temp
+*.swp
+*.swo
+*.tmp
+~$*
+
+# Archives
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+
+# Misc
+*.local

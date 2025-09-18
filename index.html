@@ -1,96 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Request Viewer</title>
-    <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-    <h1>Request Viewer</h1>
-    
-    <!-- Drag and Drop File Upload -->
-    <div id="drag-drop-area" class="drag-drop-area">
-        <div class="upload-icon">📁</div>
-        <h3>Drop sim-requests file here</h3>
-        <p>Drag and drop a sim-requests file, or click to browse</p>
-        <input type="file" id="file-input" class="file-input-hidden" accept=".txt,.json">
-    </div>
-    
-    <div class="or-divider">
-        <span>OR</span>
-    </div>
-    
-    <!-- Collapsible Folder Options -->
-    <div class="folder-options">
-        <div class="folder-options-header" id="folder-options-header">
-            <h4>Browse Files from Folder</h4>
-            <span class="folder-options-toggle" id="folder-options-toggle">▼</span>
-        </div>
-        <div class="folder-options-content" id="folder-options-content">
-            <div class="file-selector">
-                <label for="root-folder">Root Folder Path:</label>
-                <input type="text" id="root-folder" class="file-select" placeholder="Enter folder path (e.g., /path/to/folder or leave empty for current)" style="flex: 2;">
-                <button id="scan-btn" class="nav-button" style="background-color: #9b59b6; margin-left: 5px;">Scan Folder</button>
-            </div>
-            
-            <div class="file-selector">
-                <label for="file-select">Select Request File:</label>
-                <select id="file-select" class="file-select">
-                    <!-- Options will be dynamically populated -->
-                </select>
-                <input type="text" id="custom-file" class="file-select" placeholder="Or enter file path manually">
-                <button id="refresh-btn" class="nav-button">Load File</button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Function Calls Overview -->
-    <div id="function-calls-overview" class="function-calls-overview" style="display: none;">
-        <h3>Function Calls Overview</h3>
-        
-        <!-- Search Controls -->
-        <div class="search-container">
-            <input type="text" id="search-input" class="search-input" placeholder="Search function calls by name...">
-            <button id="search-button" class="search-button">🔍 Search</button>
-            <button id="clear-search" class="clear-search">❌ Clear</button>
-        </div>
-        
-        <div class="search-container">
-            <input type="text" id="response-search-input" class="search-input" placeholder="Search in responses and content...">
-            <button id="response-search-button" class="search-button">🔍 Search</button>
-            <button id="clear-response-search" class="clear-search">❌ Clear</button>
-        </div>
-        
-        <div id="function-calls-list"></div>
-    </div>
-    
-    <!-- Navigation Controls -->
-    <button id="prev-btn-side" class="side-nav">◀ Prev</button>
-    <button id="next-btn-side" class="side-nav">Next ▶</button>
-    
-    <!-- Filter Navigation Controls -->
-    <button id="prev-filter-btn" class="filter-nav">◀ Prev</button>
-    <button id="next-filter-btn" class="filter-nav">Next ▶</button>
-    
-    <!-- Status Display -->
-    <div class="status-center">
-        <span id="current-index">1</span> / <span id="total-requests">0</span>
-    </div>
-    
-    <!-- Filter Status -->
-    <div class="filter-status">
-        <span id="filter-current">1</span> / <span id="filter-total">0</span> filtered
-    </div>
-    
-    <!-- Request Container -->
-    <div id="request-container" class="request-container">
-        <p>No data loaded. Please select a file or drag and drop a sim-requests file.</p>
-    </div>
-    
-    <!-- Back to Top Button -->
-    <button id="back-to-top" class="back-to-top" title="Back to top">↑</button>
-    
-    <script src="script.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VSCode Chat Simulator Request Viewer</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
 </html>
