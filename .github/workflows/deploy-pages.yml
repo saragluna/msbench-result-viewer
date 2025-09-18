@@ -32,13 +32,7 @@ jobs:
 
       - name: Build
         run: |
-          # Detect if this is a user/organization GitHub Pages root repo (<user>.github.io)
-          if [ "${{ github.event.repository.name }}" = "${{ github.repository_owner }}.github.io" ]; then
-            export VITE_BASE_PATH=/
-          else
-            export VITE_BASE_PATH=/${{ github.event.repository.name }}/
-          fi
-          echo "Determined base path: $VITE_BASE_PATH"
+          export VITE_BASE_PATH=/
           VITE_BASE_PATH=$VITE_BASE_PATH npm run build
 
           # Copy legacy viewer (static mode) into dist/legacy
