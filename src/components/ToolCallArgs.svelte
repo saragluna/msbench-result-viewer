@@ -1,6 +1,8 @@
 <script>
   import { formatReplaceDiff, parseJSONSafe } from '../lib/utils.js';
   export let call;
+  export let reqIndex = undefined; // Optional: request index
+  export let callIndex = undefined; // Optional: call index within request
 
   // view modes:
   //  diff       - show visual diff for replace_string_in_file
@@ -10,10 +12,14 @@
   // Default view mode; will auto-upgrade to diff/formatted for specific tool types
   let view = 'auto';
 
-  $: parsedArgs = typeof call?.arguments === 'string' ? parseJSONSafe(call.arguments) : call?.arguments;
-  $: isReplace = call?.name === 'replace_string_in_file';
-  $: isCreateFile = call?.name === 'create_file';
-  $: isApplyPatch = call?.name === 'apply_patch';
+  // Handle both sim-requests format (call.arguments) and fetchlog format (call.function.arguments)
+  $: rawArguments = call?.arguments ?? call?.function?.arguments;
+  $: toolName = call?.name ?? call?.function?.name;
+  
+  $: parsedArgs = typeof rawArguments === 'string' ? parseJSONSafe(rawArguments) : rawArguments;
+  $: isReplace = toolName === 'replace_string_in_file';
+  $: isCreateFile = toolName === 'create_file';
+  $: isApplyPatch = toolName === 'apply_patch';
 
   // Extract raw patch text for apply_patch
   $: patchText = (() => {
@@ -22,11 +28,11 @@
       // Common parameter names: patch, input, diff
       return parsedArgs.patch || parsedArgs.input || parsedArgs.diff || '';
     }
-    if (typeof call?.arguments === 'string') {
-      const p = parseJSONSafe(call.arguments);
+    if (typeof rawArguments === 'string') {
+      const p = parseJSONSafe(rawArguments);
       if (p && typeof p === 'object') return p.patch || p.input || p.diff || '';
       // If arguments is already the patch block string
-      if (/\*\*\* Begin Patch/.test(call.arguments)) return call.arguments;
+      if (/\*\*\* Begin Patch/.test(rawArguments)) return rawArguments;
     }
     return '';
   })();
@@ -79,14 +85,14 @@
   $: formattedArgs = (() => {
     try {
       if (parsedArgs && typeof parsedArgs === 'object') return JSON.stringify(parsedArgs, null, 2);
-      if (typeof call?.arguments === 'string') {
-        const attempt = parseJSONSafe(call.arguments);
+      if (typeof rawArguments === 'string') {
+        const attempt = parseJSONSafe(rawArguments);
         if (attempt && typeof attempt === 'object') return JSON.stringify(attempt, null, 2);
-        return call.arguments; // plain string
+        return rawArguments; // plain string
       }
-      if (call?.arguments !== undefined) return JSON.stringify(call.arguments, null, 2);
+      if (rawArguments !== undefined) return JSON.stringify(rawArguments, null, 2);
       return '';
-    } catch { return typeof call?.arguments === 'string' ? call.arguments : ''; }
+    } catch { return typeof rawArguments === 'string' ? rawArguments : ''; }
   })();
 
   // Auto-select a richer default visualization the first time we see these tools
@@ -109,7 +115,7 @@
   {#if isReplace}
     <div class="actions"><button on:click={toggleDiff}>{view === 'diff' ? 'Raw JSON' : 'View Diff'}</button></div>
     {#if view === 'diff' && parsedArgs?.oldString}
-      <div class="diff-wrapper" aria-label="Replace diff view">{@html formatReplaceDiff(parsedArgs)}</div>
+      <div class="diff-wrapper" aria-label="Replace diff view">{@html formatReplaceDiff()}</div>
     {:else}
       <pre>{formattedArgs}</pre>
     {/if}

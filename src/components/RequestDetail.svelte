@@ -476,7 +476,7 @@
                       <pre class="code-block raw-full-inline">{rawMessageText(m)}</pre>
                     </div>
                   {:else if m.content?.length}
-                    {#each m.content as c}
+                    {#each (Array.isArray(m.content) ? m.content : [m.content]) as c}
                       {#if typeof c === 'string' || (c?.text && SPECIAL_TAG_RE.test(c.text))}
                         {#each parseSpecialSections(typeof c === 'string' ? c : c.text) as seg}
                           {#if seg.kind === 'environment'}
@@ -580,7 +580,7 @@
                         <pre class="code-block raw-full-inline">{rawMessageText(m)}</pre>
                       </div>
                     {:else if m.content?.length}
-                      {#each m.content as c}
+                      {#each (Array.isArray(m.content) ? m.content : [m.content]) as c}
                         {#if typeof c === 'string' || (c?.text && SPECIAL_TAG_RE.test(c.text))}
                           {#each parseSpecialSections(typeof c === 'string' ? c : c.text) as seg}
                             {#if seg.kind === 'environment'}
