@@ -358,13 +358,14 @@
     {/if}
 
     <!-- Tool Calls (Response-side) -->
-    {#if req.response.copilotFunctionCalls?.length}
+    {#if req.response.copilotFunctionCalls?.length || req.response.toolCalls?.length}
+      {@const toolCallsList = req.response.copilotFunctionCalls || req.response.toolCalls || []}
       <section class="group response-calls-group">
         <details class="collapsible" open data-role="response-calls" aria-label="Response tool calls group">
-          <summary><span class="caret"></span><h3>Tool Calls <span class="count-badge">{req.response.copilotFunctionCalls.length}</span></h3></summary>
+          <summary><span class="caret"></span><h3>Tool Calls <span class="count-badge">{toolCallsList.length}</span></h3></summary>
           <div class="collapsible-body">
             <div class="scroll-area calls-scroll" role="region" aria-label="Tool calls within response (each in its own section)">
-              {#each req.response.copilotFunctionCalls as call, ci}
+              {#each toolCallsList as call, ci}
                 {#key ci}
                 <section class="toolcall-section {current.callIndex === ci ? 'active' : ''}" id={'resp-fncall-' + ci} data-call-id={call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)}>
                   <header class="toolcall-head">

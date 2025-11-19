@@ -65,6 +65,7 @@
   on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && fileInput.click()}>
   <div class="icon" aria-hidden="true">📁</div>
   <div class="dd-text-main">{(dragOver || globalDrag) ? 'Release to Load' : 'Drop / Click'}</div>
+  <div class="dd-text-hint">Supports: sim-requests, fetchlog, or JSON files</div>
   <input bind:this={fileInput} type="file" accept=".txt,.json" style="display:none" on:change={onFile}>
   {#if globalDrag && !dragOver}
     <div class="global-overlay">Drop file anywhere to load</div>
@@ -80,11 +81,13 @@
 .icon { font-size:30px; margin:0 0 6px; color:#475569; line-height:1; }
 .drag-drop.over .icon { color:#16a34a; }
 .dd-text-main { font-size:.92rem; font-weight:700; letter-spacing:.2px; color:#334155; text-transform:none; }
+.dd-text-hint { font-size:.72rem; margin-top:4px; color:#64748b; font-weight:400; }
 @media (prefers-color-scheme: dark) {
   .drag-drop { background:#1f2730; border-color:#334150; }
   .drag-drop.over { background:#112318; }
   .icon { color:#9fb0c3; }
   .dd-text-main { color:#e2e8f0; }
+  .dd-text-hint { color:#94a3b8; }
   .global-overlay { background:rgba(34,197,94,0.15); color:#4ade80; }
 }
 </style>

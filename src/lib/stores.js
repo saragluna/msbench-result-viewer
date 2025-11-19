@@ -240,6 +240,139 @@ export function navigateFilteredNext() {
   }
 }
 
+// ========== Format Detection ==========
+function detectFormat(req) {
+  // sim-requests format: has response.copilotFunctionCalls
+  if (req.response?.copilotFunctionCalls && Array.isArray(req.response.copilotFunctionCalls)) {
+    return 'sim-requests';
+  }
+  
+  // fetchlog format: has response.toolCalls (not copilotFunctionCalls)
+  if (req.response?.toolCalls && Array.isArray(req.response.toolCalls)) {
+    return 'fetchlog';
+  }
+  
+  // Fallback based on field presence
+  if (req.response?.copilotFunctionCalls) return 'sim-requests';
+  if (req.requestId && req.messages) return 'fetchlog';
+  if (req.requestMessages) return 'sim-requests';
+  
+  return 'unknown';
+}
+
+// ========== sim-requests Format Parser ==========
+function parseSimRequestsFormat(req) {
+  // In sim-requests, tool calls are in response.copilotFunctionCalls
+  const calls = safeArray(req.response?.copilotFunctionCalls);
+  
+  return calls.map(call => ({
+    name: call.name || 'Unknown',
+    arguments: call.arguments || '{}',
+    id: call.id
+  }));
+}
+
+// ========== fetchlog Format Parser ==========
+function parseFetchlogFormat(req) {
+  // fetchlog format has response.toolCalls array
+  const toolCalls = safeArray(req.response?.toolCalls);
+  
+  // Map fetchlog toolCalls format: { type: "function", function: { name, arguments }, id }
+  return toolCalls.map((tc) => {
+    const name = tc?.function?.name || 'Unknown';
+    const rawArgs = tc?.function?.arguments;
+    const argsStr = typeof rawArgs === 'string' 
+      ? rawArgs 
+      : JSON.stringify(rawArgs || {});
+    
+    return {
+      name,
+      arguments: argsStr,
+      id: tc?.id
+    };
+  });
+}
+
+// ========== Normalize fetchlog Request ==========
+// fetchlog stores assistant content in messages array, we need to extract it to response.value
+// NOTE: In fetchlog format, when response.type is "tool_calls", the assistant message may NOT
+// be in the current request's messages array. Instead, it appears in the NEXT request's messages
+// as part of conversation history. So pure tool-call responses will have empty response.value.
+function normalizeFetchlogRequest(req, allRequests = [], currentIndex = 0) {
+  if (!req.messages || !Array.isArray(req.messages)) return req;
+  
+  // Extract assistant's text content from messages
+  const assistantContents = [];
+  for (const msg of req.messages) {
+    if (msg?.role === 'assistant') {
+      // In fetchlog, assistant message has content (text) AND may have tool_calls
+      if (typeof msg.content === 'string' && msg.content.trim()) {
+        assistantContents.push(msg.content);
+      } else if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (typeof part === 'string' && part.trim()) {
+            assistantContents.push(part);
+          } else if (part?.text && part.text.trim()) {
+            assistantContents.push(part.text);
+          }
+        }
+      }
+    }
+  }
+  
+  // Get unified tools from first request that has tools (all requests should use same tools)
+  const unifiedTools = (() => {
+    // First try current request's tools
+    if (req.tools && req.tools.length > 0) return req.tools;
+    // Then search through all requests for the first one with tools
+    for (const r of allRequests) {
+      if (r.tools && r.tools.length > 0) return r.tools;
+    }
+    return req.requestOptions?.tools || [];
+  })();
+  
+  // For fetchlog format, use a unified requestId to group all requests into one round
+  // This makes the UI simpler and matches the actual conversation flow
+  const unifiedRequestId = 'fetchlog-unified-conversation';
+  
+  // Create normalized request with response.value for consistency with sim-requests format
+  // If no assistant content found AND response type is tool_calls, leave value empty/undefined
+  // so that Response Text section won't show (it's a pure tool call response)
+  const normalized = {
+    ...req,
+    response: {
+      ...req.response,
+      value: assistantContents.length > 0 ? assistantContents : (req.response?.value || undefined),
+      // Use unified requestId for all fetchlog requests to show as single round
+      requestId: unifiedRequestId
+    },
+    // Also copy messages to requestMessages for tool output lookup compatibility
+    requestMessages: req.messages,
+    // Use unified tools for all requests to ensure consistency
+    requestOptions: {
+      ...req.requestOptions,
+      tools: unifiedTools
+    }
+  };
+  
+  return normalized;
+}
+
+// ========== Universal Tool Call Extractor ==========
+function extractToolCalls(req) {
+  const format = detectFormat(req);
+  
+  switch (format) {
+    case 'sim-requests':
+      return parseSimRequestsFormat(req);
+    case 'fetchlog':
+      return parseFetchlogFormat(req);
+    default:
+      console.warn('Unknown format for request:', req);
+      return [];
+  }
+}
+
 export function loadDataFromText(text) {
   let data;
   try {
@@ -259,27 +392,50 @@ export function loadDataFromText(text) {
     }
   }
   if (!Array.isArray(data)) return;
-  requests.set(data);
+  
+  // Detect format from first request
+  const format = data.length > 0 ? detectFormat(data[0]) : 'unknown';
+  console.log(`[Format Detection] Detected format: ${format}`);
+  
+  // Normalize fetchlog requests to have response.value like sim-requests
+  const normalizedData = data.map((req, idx) => 
+    format === 'fetchlog' ? normalizeFetchlogRequest(req, data, idx) : req
+  );
+  
+  requests.set(normalizedData);
+  
   // build flattened calls
   const flattened = [];
-  data.forEach((req, rIndex) => {
-    // Detect special analyze-files system message
+  normalizedData.forEach((req, rIndex) => {
+    // Detect special analyze-files system message (works for both formats)
     const hasAnalyzeFilesSystemMsg = (() => {
       const target = 'You are an expert at analyzing files and patterns.';
-      if (!req?.requestMessages) return false;
-      for (const m of req.requestMessages) {
-        if (m?.role !== 'system' || !Array.isArray(m.content)) continue;
-        for (const c of m.content) {
-          const txt = (typeof c === 'string' ? c : c?.text) || '';
-          if (txt.trim() === target) return true;
+      // Check in both requestMessages (sim-requests) and messages (fetchlog)
+      const messages = req.requestMessages || req.messages;
+      if (!messages) return false;
+      for (const m of messages) {
+        if (m?.role !== 'system') continue;
+        
+        // Handle both string content (fetchlog) and array content (sim-requests)
+        if (typeof m.content === 'string') {
+          if (m.content.includes(target)) return true;
+        } else if (Array.isArray(m.content)) {
+          for (const c of m.content) {
+            const txt = (typeof c === 'string' ? c : c?.text) || '';
+            if (txt.includes(target)) return true;
+          }
         }
       }
       return false;
     })();
-  // Detect patch-like response (*** Begin Patch ... *** End Patch) for patch_file inference
-  const responseJoined = Array.isArray(req?.response?.value) ? req.response.value.join('\n') : (req?.response?.value || '');
-  const hasPatchBlock = typeof responseJoined === 'string' && /\*\*\* Begin Patch[\s\S]*\*\*\* End Patch/.test(responseJoined);
-    const calls = safeArray(req.response?.copilotFunctionCalls);
+    
+    // Detect patch-like response (*** Begin Patch ... *** End Patch) for patch_file inference
+    const responseJoined = Array.isArray(req?.response?.value) ? req.response.value.join('\n') : (req?.response?.value || '');
+    const hasPatchBlock = typeof responseJoined === 'string' && /\*\*\* Begin Patch[\s\S]*\*\*\* End Patch/.test(responseJoined);
+    
+    // Extract tool calls using format-specific parser
+    const calls = extractToolCalls(req);
+    
     if (calls.length) {
       calls.forEach((call, ci) => {
         let rawName = call.name || call.function?.name || 'Unknown Function';
@@ -302,6 +458,7 @@ export function loadDataFromText(text) {
           callIndex: ci,
           name: nm,
           arguments: call.arguments,
+          id: call.id,
           request: req,
           hasFunction: true,
           color: clr,
