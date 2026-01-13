@@ -120,48 +120,6 @@ export const groupedCalls = derived([
   return Array.from(groups.values()).sort((a, b) => a.requestIndex - b.requestIndex);
 });
 
-// Grouped function calls by agent - for visualizing agent context switches
-export const groupedByAgent = derived([
-  groupedCalls
-], ([$groupedCalls]) => {
-  // Groups tool calls by agent, detecting agent switches
-  // Returns: Array<{ agentName: string, isSubAgent: boolean, groups: Array<groupedCalls item> }>
-  const agentGroups = [];
-  let currentAgentName = null;
-  let currentAgentGroup = null;
-  
-  // Agent type patterns for classification
-  const SUB_AGENT_PATTERNS = ['tool/', 'copilotLanguageModelWrapper'];
-  
-  $groupedCalls.forEach(group => {
-    const agentName = group.request?.name || null;
-    
-    // Detect agent switch
-    if (agentName !== currentAgentName) {
-      if (currentAgentGroup) {
-        agentGroups.push(currentAgentGroup);
-      }
-      currentAgentName = agentName;
-      currentAgentGroup = {
-        agentName,
-        isSubAgent: agentName && SUB_AGENT_PATTERNS.some(pattern => agentName.includes(pattern)),
-        groups: []
-      };
-    }
-    
-    if (currentAgentGroup) {
-      currentAgentGroup.groups.push(group);
-    }
-  });
-  
-  // Push the last agent group
-  if (currentAgentGroup) {
-    agentGroups.push(currentAgentGroup);
-  }
-  
-  return agentGroups;
-});
-
 // Check if there's exactly one function call per request (hide request frame when true)
 export const shouldHideRequestFrame = derived([
   requests, functionCalls
@@ -736,8 +694,7 @@ export function loadDataFromText(text) {
           request: reqForCall,
           hasFunction: true,
           color: clr,
-          inferred,
-          agentName: req?.name || null
+          inferred
         });
       });
     } else {
@@ -755,8 +712,7 @@ export function loadDataFromText(text) {
             request: req,
             hasFunction: true, // treat as tool for color preservation
             conversationSummary: true,
-            color: clr,
-            agentName: req?.name || null
+            color: clr
         });
       } else if (isSummarizeRequest) {
         // Synthesize summarize pseudo-tool for special summarization prompts
@@ -771,8 +727,7 @@ export function loadDataFromText(text) {
           hasFunction: true,
           conversationSummary: true,
           synthetic: true,
-          color: clr,
-          agentName: req?.name || null
+          color: clr
         });
       } else if (hasAnalyzeFilesSystemMsg) {
         // Synthesize analyze_files_and_patterns pseudo-tool to satisfy display requirement
@@ -788,8 +743,7 @@ export function loadDataFromText(text) {
           hasFunction: true, // mark as function so color refresh uses palette
           synthetic: true,
           inferred: true,
-          color: clr,
-          agentName: req?.name || null
+          color: clr
         });
       } else if (hasPatchBlock) {
         // Synthesize patch_file pseudo-tool if patch content but no calls
@@ -805,8 +759,7 @@ export function loadDataFromText(text) {
           hasFunction: true,
           synthetic: true,
           inferred: true,
-          color: clr,
-          agentName: req?.name || null
+          color: clr
         });
       } else {
   let noneColor = '#000000';
@@ -818,8 +771,7 @@ export function loadDataFromText(text) {
           arguments: null,
           request: req,
           hasFunction: false,
-          color: noneColor,
-          agentName: req?.name || null
+          color: noneColor
         });
       }
     }

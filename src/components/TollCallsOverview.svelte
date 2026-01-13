@@ -1,5 +1,5 @@
 <script>
-  import { functionCalls, selection, filteredIndices, activeList, groupedCalls, groupedByAgent, shouldHideRequestFrame, selectCall, requests } from '../lib/stores.js';
+  import { functionCalls, selection, filteredIndices, activeList, groupedCalls, shouldHideRequestFrame, selectCall, requests } from '../lib/stores.js';
   import { onMount, tick } from 'svelte';
   export let variant = 'panel'; // 'panel' | 'top'
 
@@ -7,7 +7,6 @@
   
   $: list = $activeList; // indices to show
   $: groups = $groupedCalls; // grouped by request
-  $: agentGroups = $groupedByAgent; // grouped by agent for displaying agent context
   $: hideFrame = $shouldHideRequestFrame; // hide request frame when tool calls = requests
   $: fullRequests = $requests; // complete list for round detection independent of filters
 
@@ -87,25 +86,6 @@
     return call.name;
   }
 
-  // Helper to format agent name for display
-  function formatAgentName(agentName) {
-    if (!agentName) return 'Main Agent';
-    // Convert "panel/editAgent" to "Edit Agent", "tool/runSubagent" to "Run Subagent", etc.
-    const parts = agentName.split('/');
-    const name = parts[parts.length - 1];
-    // Convert camelCase to Title Case
-    return name.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
-  }
-
-  // Helper to get agent icon based on agent type
-  function getAgentIcon(agentName, isSubAgent) {
-    if (!agentName) return '🤖';
-    if (agentName.includes('tool/')) return '🔧';
-    if (agentName.includes('panel/')) return '📝';
-    if (agentName.includes('copilot')) return '💡';
-    return isSubAgent ? '🔸' : '🤖';
-  }
-
   // Map each grouped request to round & metadata (formerly removed during refactor)
   $: requestRoundMap = groups.map(g => {
     const rid = g.request?.response?.requestId || `__noid_${g.requestIndex}`;
@@ -129,11 +109,34 @@
     return id.slice(0, max - (tail + 1)) + '…' + id.slice(-tail);
   }
   
-  // Helper to find round map entry for a request index
-  function getRoundMap(requestIndex) {
-    return requestRoundMap.find(rm => rm.requestIndex === requestIndex);
+  // Get the main agent name for a round (first non-copilot agent)
+  function getMainAgentForRound(roundNumber) {
+    // Find all requests in this round
+    const roundRequests = requestRoundMap.filter(r => r.roundNumber === roundNumber);
+    // Find the first agent that is not copilotLanguageModelWrapper
+    for (const req of roundRequests) {
+      const agentName = req.request?.name;
+      if (agentName && !agentName.includes('copilotLanguageModelWrapper')) {
+        return agentName;
+      }
+    }
+    return null;
   }
   
+  // Format agent name for display
+  function formatAgentName(name) {
+    if (!name) return '';
+    // Remove common prefixes and format
+    let formatted = name.replace(/^(tool\/|panel\/)/, '');
+    // Convert camelCase or snake_case to Title Case
+    formatted = formatted
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+    return formatted;
+  }
   let scrollEl; // bound via bind:this
   let lastScrolledIndex = -1;
   async function scrollSelectedIntoView(center = true) {
@@ -183,7 +186,13 @@
         {#if rm.isRoundStart}
           <div class="round-full-separator" data-round={rm.roundNumber} data-request-id={rm.requestId} title={`Round ${rm.roundNumber} • ${rm.requestId}`} aria-label={`Round ${rm.roundNumber} boundary (request id ${rm.requestId})`}>
             <span class="rfs-line" aria-hidden="true"></span>
-            <span class="rfs-label">Round {rm.roundNumber}<span class="rfs-id" title={rm.requestId}>{truncateId(rm.requestId)}</span></span>
+            <span class="rfs-label">
+              Round {rm.roundNumber}
+              {#if getMainAgentForRound(rm.roundNumber)}
+                <span class="rfs-agent">• {formatAgentName(getMainAgentForRound(rm.roundNumber))}</span>
+              {/if}
+              <span class="rfs-id" title={rm.requestId}>{truncateId(rm.requestId)}</span>
+            </span>
             <span class="rfs-line" aria-hidden="true"></span>
           </div>
         {/if}
@@ -206,43 +215,40 @@
       {/each}
     </div>
   {:else}
-    <!-- Normal mode with request group frames and agent grouping -->
+    <!-- Normal mode with request group frames -->
     <div class="mixed-calls {variant === 'top' ? 'top-flow' : 'panel-flow'}" role="listbox" aria-label="Tool calls (multi-call requests framed, single-call inline)">
-      {#each agentGroups as agentGroup, agi}
-        {#key 'agent-'+agi}
-          <!-- Agent header to show agent context -->
-          <div class="agent-header" class:sub-agent={agentGroup.isSubAgent} data-agent={agentGroup.agentName}>
-            <span class="agent-icon" aria-hidden="true">{getAgentIcon(agentGroup.agentName, agentGroup.isSubAgent)}</span>
-            <span class="agent-name">{formatAgentName(agentGroup.agentName)}</span>
-            <span class="agent-call-count">{agentGroup.groups.reduce((sum, g) => sum + g.calls.length, 0)} calls</span>
-          </div>
-          
-          {#each agentGroup.groups as group, gi}
-            {#key 'grp-'+group.requestIndex}
-              {#if getRoundMap(group.requestIndex)?.isRoundStart}
-                <div class="round-full-separator" data-round={getRoundMap(group.requestIndex).roundNumber} data-request-id={getRoundMap(group.requestIndex).requestId} title={`Round ${getRoundMap(group.requestIndex).roundNumber} • ${getRoundMap(group.requestIndex).requestId}`} aria-label={`Round ${getRoundMap(group.requestIndex).roundNumber} boundary (request id ${getRoundMap(group.requestIndex).requestId})`}>
-                  <span class="rfs-line" aria-hidden="true"></span>
-                  <span class="rfs-label">Round {getRoundMap(group.requestIndex).roundNumber}<span class="rfs-id" title={getRoundMap(group.requestIndex).requestId}>{truncateId(getRoundMap(group.requestIndex).requestId)}</span></span>
-                  <span class="rfs-line" aria-hidden="true"></span>
-                </div>
-              {/if}
-              <div
-                class="request-group"
-                class:single-call={group.calls.length === 1}
-                data-request-index={group.requestIndex}
-                data-request-id={getRoundMap(group.requestIndex)?.requestId}
-                data-round={getRoundMap(group.requestIndex)?.roundNumber}>
-                <div class="group-calls-container" aria-label={`Request ${group.requestIndex + 1} with ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}>
-                  {#each group.calls as call}
-                    <button
-                      role="option"
-                      aria-selected={$selection.callIndex === call.originalIndex}
-                      class:selected={$selection.callIndex === call.originalIndex}
-                      class:topchip={variant === 'top'}
-                      style="--chip-color:{call.color}"
-                      data-round={getRoundMap(group.requestIndex)?.roundNumber}
-                      data-req-info={`Request ${group.requestIndex + 1} • ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}
-                      data-call-index={call.originalIndex}
+      {#each groups as group, gi}
+        {#key 'grp-'+group.requestIndex}
+          {#if requestRoundMap[gi].isRoundStart}
+            <div class="round-full-separator" data-round={requestRoundMap[gi].roundNumber} data-request-id={requestRoundMap[gi].requestId} title={`Round ${requestRoundMap[gi].roundNumber} • ${requestRoundMap[gi].requestId}`} aria-label={`Round ${requestRoundMap[gi].roundNumber} boundary (request id ${requestRoundMap[gi].requestId})`}>
+              <span class="rfs-line" aria-hidden="true"></span>
+              <span class="rfs-label">
+                Round {requestRoundMap[gi].roundNumber}
+                {#if getMainAgentForRound(requestRoundMap[gi].roundNumber)}
+                  <span class="rfs-agent">• {formatAgentName(getMainAgentForRound(requestRoundMap[gi].roundNumber))}</span>
+                {/if}
+                <span class="rfs-id" title={requestRoundMap[gi].requestId}>{truncateId(requestRoundMap[gi].requestId)}</span>
+              </span>
+              <span class="rfs-line" aria-hidden="true"></span>
+            </div>
+          {/if}
+          <div
+            class="request-group"
+            class:single-call={group.calls.length === 1}
+            data-request-index={group.requestIndex}
+            data-request-id={requestRoundMap[gi].requestId}
+            data-round={requestRoundMap[gi].roundNumber}>
+            <div class="group-calls-container" aria-label={`Request ${group.requestIndex + 1} with ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}>
+              {#each group.calls as call}
+                <button
+                  role="option"
+                  aria-selected={$selection.callIndex === call.originalIndex}
+                  class:selected={$selection.callIndex === call.originalIndex}
+                  class:topchip={variant === 'top'}
+                  style="--chip-color:{call.color}"
+                  data-round={requestRoundMap[gi].roundNumber}
+                  data-req-info={`Request ${group.requestIndex + 1} • ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}
+                  data-call-index={call.originalIndex}
                   aria-label={'Tool call ' + (call.name || 'None') + (group.calls.length === 1 ? ' (single-call request)' : '') + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
                   on:click={() => selectCall(call.originalIndex)}>
                   <span class="num">{call.originalIndex + 1}</span>
@@ -253,8 +259,6 @@
               {/each}
             </div>
           </div>
-        {/key}
-      {/each}
         {/key}
       {/each}
     </div>
@@ -679,109 +683,6 @@ button[data-req-info]:hover::before, button[data-req-info]:focus-visible::before
 }
 @keyframes fadeInTooltip { from { opacity:0; transform: translate(-50%, -90%); } to { opacity:1; transform: translate(-50%, -100%); } }
 
-/* Agent header styling */
-.agent-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin: 12px 0 8px;
-  padding: 8px 12px;
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border-left: 4px solid #0ea5e9;
-  border-radius: 6px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-  position: relative;
-  overflow: hidden;
-}
-
-.agent-header::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, #0ea5e9, #06b6d4);
-  opacity: 0.6;
-}
-
-.agent-header.sub-agent {
-  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-  border-left-color: #f59e0b;
-  margin-left: 12px; /* Indent sub-agents */
-}
-
-.agent-header.sub-agent::before {
-  background: linear-gradient(90deg, #f59e0b, #fbbf24);
-}
-
-.agent-icon {
-  font-size: 1.2rem;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));
-}
-
-.agent-name {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #0369a1;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  flex: 1;
-}
-
-.agent-header.sub-agent .agent-name {
-  color: #92400e;
-}
-
-.agent-call-count {
-  font-size: 0.6rem;
-  font-weight: 600;
-  color: #64748b;
-  background: rgba(255, 255, 255, 0.7);
-  padding: 2px 8px;
-  border-radius: 10px;
-  letter-spacing: 0.3px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .agent-header {
-    background: linear-gradient(135deg, #0c4a6e 0%, #075985 100%);
-    border-left-color: #38bdf8;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-  }
-  
-  .agent-header::before {
-    background: linear-gradient(90deg, #38bdf8, #0ea5e9);
-  }
-  
-  .agent-header.sub-agent {
-    background: linear-gradient(135deg, #713f12 0%, #854d0e 100%);
-    border-left-color: #fbbf24;
-  }
-  
-  .agent-header.sub-agent::before {
-    background: linear-gradient(90deg, #fbbf24, #f59e0b);
-  }
-  
-  .agent-name {
-    color: #7dd3fc;
-  }
-  
-  .agent-header.sub-agent .agent-name {
-    color: #fde68a;
-  }
-  
-  .agent-call-count {
-    background: rgba(30, 41, 59, 0.7);
-    color: #94a3b8;
-  }
-}
-
 /* Round chip separator */
 /* Full-width round separator */
 .round-full-separator { display:flex; align-items:center; gap:8px; width:100%; margin:8px 0 4px; padding:2px 4px; box-sizing:border-box; }
@@ -803,10 +704,21 @@ button[data-req-info]:hover::before, button[data-req-info]:focus-visible::before
   text-overflow:ellipsis; 
   vertical-align:middle;
 }
+.round-full-separator .rfs-label .rfs-agent {
+  display:inline-block;
+  margin-left:4px;
+  margin-right:2px;
+  font-size:.5rem;
+  font-weight:600;
+  color:#0369a1;
+  opacity:0.85;
+  letter-spacing:.3px;
+}
 @media (prefers-color-scheme: dark) { 
   .round-full-separator .rfs-line { border-top-color:#38bdf8; opacity:.7; }
   .round-full-separator .rfs-label { background:#0f172a; color:#38bdf8; box-shadow:0 1px 2px rgba(0,0,0,0.6); }
   .round-full-separator .rfs-label .rfs-id { background:rgba(56,189,248,0.15); color:#38bdf8; }
+  .round-full-separator .rfs-label .rfs-agent { color:#38bdf8; }
 }
 
 button:focus-visible { 
