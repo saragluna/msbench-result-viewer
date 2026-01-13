@@ -130,6 +130,9 @@ export const groupedByAgent = derived([
   let currentAgentName = null;
   let currentAgentGroup = null;
   
+  // Agent type patterns for classification
+  const SUB_AGENT_PATTERNS = ['tool/', 'copilotLanguageModelWrapper'];
+  
   $groupedCalls.forEach(group => {
     const agentName = group.request?.name || null;
     
@@ -141,7 +144,7 @@ export const groupedByAgent = derived([
       currentAgentName = agentName;
       currentAgentGroup = {
         agentName,
-        isSubAgent: agentName && (agentName.includes('tool/') || agentName.includes('copilotLanguageModelWrapper')),
+        isSubAgent: agentName && SUB_AGENT_PATTERNS.some(pattern => agentName.includes(pattern)),
         groups: []
       };
     }
