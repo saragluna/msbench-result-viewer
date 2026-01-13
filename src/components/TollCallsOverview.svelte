@@ -137,6 +137,35 @@
       .join(' ');
     return formatted;
   }
+  
+  // Check if a tool call triggers a sub-agent
+  function isSubAgentTrigger(call) {
+    return call && (call.name === 'runSubagent' || call.name?.toLowerCase() === 'runsubagent');
+  }
+  
+  // Get the next agent triggered by a runSubagent call
+  function getTriggeredAgent(callIndex) {
+    // Find the next request after this call that has a different agent name
+    const currentRequest = requestRoundMap.find(r => 
+      r.calls && r.calls.some(c => c.originalIndex === callIndex)
+    );
+    if (!currentRequest) return null;
+    
+    const currentAgentName = currentRequest.request?.name;
+    
+    // Look for the next request with a different agent name
+    for (let i = 0; i < requestRoundMap.length; i++) {
+      if (requestRoundMap[i].requestIndex > currentRequest.requestIndex) {
+        const nextAgentName = requestRoundMap[i].request?.name;
+        if (nextAgentName && 
+            nextAgentName !== currentAgentName && 
+            !nextAgentName.includes('copilotLanguageModelWrapper')) {
+          return nextAgentName;
+        }
+      }
+    }
+    return null;
+  }
   let scrollEl; // bound via bind:this
   let lastScrolledIndex = -1;
   async function scrollSelectedIntoView(center = true) {
@@ -210,6 +239,13 @@
             <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
             {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
             {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
+            {#if isSubAgentTrigger(call)}
+              {#if getTriggeredAgent(call.originalIndex)}
+                <span class="subagent-trigger" title="Triggers sub-agent: {formatAgentName(getTriggeredAgent(call.originalIndex))}">🔀 → {formatAgentName(getTriggeredAgent(call.originalIndex))}</span>
+              {:else}
+                <span class="subagent-trigger" title="Triggers sub-agent">🔀</span>
+              {/if}
+            {/if}
           </button>
         {/each}
       {/each}
@@ -255,6 +291,13 @@
                   <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
                   {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
                   {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
+                  {#if isSubAgentTrigger(call)}
+                    {#if getTriggeredAgent(call.originalIndex)}
+                      <span class="subagent-trigger" title="Triggers sub-agent: {formatAgentName(getTriggeredAgent(call.originalIndex))}">🔀 → {formatAgentName(getTriggeredAgent(call.originalIndex))}</span>
+                    {:else}
+                      <span class="subagent-trigger" title="Triggers sub-agent">🔀</span>
+                    {/if}
+                  {/if}
                 </button>
               {/each}
             </div>
@@ -604,6 +647,36 @@ button.selected .infer-badge, button.topchip.selected .infer-badge { filter:brig
 /* Failed response emoji indicator */
 .fail-emoji { font-size:.7rem; line-height:1; display:inline-flex; align-items:center; margin-left:2px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.25)); }
 .summary-emoji { font-size:.7rem; line-height:1; display:inline-flex; align-items:center; margin-left:2px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.25)); }
+
+/* Sub-agent trigger indicator */
+.subagent-trigger {
+  font-size: .55rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: .3px;
+  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.topchip .subagent-trigger {
+  background: rgba(0, 0, 0, 0.15);
+  border-color: rgba(0, 0, 0, 0.2);
+}
+@media (prefers-color-scheme: dark) {
+  .subagent-trigger {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.25);
+  }
+}
 
 button.topchip.selected { 
   outline: none; 
