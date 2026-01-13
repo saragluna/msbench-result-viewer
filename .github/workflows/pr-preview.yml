@@ -33,7 +33,7 @@ jobs:
 
       - name: Build with PR-specific base path
         run: |
-          export VITE_BASE_PATH=/pr-${{ github.event.pull_request.number }}/
+          export VITE_BASE_PATH=/msbench-result-viewer/pr-${{ github.event.pull_request.number }}/
           VITE_BASE_PATH=$VITE_BASE_PATH npm run build
           
           # Copy legacy viewer (static mode) into dist/legacy
