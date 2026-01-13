@@ -32,7 +32,7 @@ jobs:
 
       - name: Build
         run: |
-          export VITE_BASE_PATH=/msbench-result-viewer/
+          export VITE_BASE_PATH=./
           VITE_BASE_PATH=$VITE_BASE_PATH npm run build
 
           # Copy legacy viewer (static mode) into dist/legacy

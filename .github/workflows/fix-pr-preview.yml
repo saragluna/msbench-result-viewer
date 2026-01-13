@@ -31,7 +31,7 @@ jobs:
 
       - name: Build with correct base path
         run: |
-          export VITE_BASE_PATH=/msbench-result-viewer/pr-${{ inputs.pr_number }}/
+          export VITE_BASE_PATH=./
           VITE_BASE_PATH=$VITE_BASE_PATH npm run build
           
           # Copy legacy viewer (static mode) into dist/legacy
