@@ -204,6 +204,38 @@
     
     return callRequest.request?.name || '';
   }
+  
+  // Check if this is the first call of a sub-agent (entering sub-agent context)
+  function isSubAgentEntry(call, callIndex) {
+    if (!isSubAgentCall(call)) return false;
+    
+    // Check if the previous call is NOT from the same sub-agent
+    if (callIndex === 0) return true;
+    
+    const prevCall = list[callIndex - 1];
+    if (!prevCall) return true;
+    
+    const currentAgent = getSubAgentName(call);
+    const prevAgent = getSubAgentName(prevCall);
+    
+    return currentAgent !== prevAgent || !isSubAgentCall(prevCall);
+  }
+  
+  // Check if this is the last call of a sub-agent (exiting sub-agent context)
+  function isSubAgentExit(call, callIndex) {
+    if (!isSubAgentCall(call)) return false;
+    
+    // Check if the next call is NOT from the same sub-agent
+    if (callIndex === list.length - 1) return true;
+    
+    const nextCall = list[callIndex + 1];
+    if (!nextCall) return true;
+    
+    const currentAgent = getSubAgentName(call);
+    const nextAgent = getSubAgentName(nextCall);
+    
+    return currentAgent !== nextAgent || !isSubAgentCall(nextCall);
+  }
   let scrollEl; // bound via bind:this
   let lastScrolledIndex = -1;
   async function scrollSelectedIntoView(center = true) {
@@ -263,7 +295,14 @@
             <span class="rfs-line" aria-hidden="true"></span>
           </div>
         {/if}
-        {#each rm.calls as call}
+        {#each rm.calls as call, callIdx}
+          <!-- Add dashed separator when entering sub-agent context -->
+          {#if isSubAgentEntry(call, call.originalIndex)}
+            <div class="subagent-separator subagent-entry" aria-label="Entering sub-agent context">
+              <span class="separator-line"></span>
+            </div>
+          {/if}
+          
           <button
             role="option"
             aria-selected={$selection.callIndex === call.originalIndex}
@@ -287,6 +326,13 @@
               {/if}
             {/if}
           </button>
+          
+          <!-- Add dashed separator when exiting sub-agent context -->
+          {#if isSubAgentExit(call, call.originalIndex)}
+            <div class="subagent-separator subagent-exit" aria-label="Exiting sub-agent context">
+              <span class="separator-line"></span>
+            </div>
+          {/if}
         {/each}
       {/each}
     </div>
@@ -315,7 +361,14 @@
             data-request-id={requestRoundMap[gi].requestId}
             data-round={requestRoundMap[gi].roundNumber}>
             <div class="group-calls-container" aria-label={`Request ${group.requestIndex + 1} with ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}>
-              {#each group.calls as call}
+              {#each group.calls as call, callIdx}
+                <!-- Add dashed separator when entering sub-agent context -->
+                {#if isSubAgentEntry(call, call.originalIndex)}
+                  <div class="subagent-separator subagent-entry" aria-label="Entering sub-agent context">
+                    <span class="separator-line"></span>
+                  </div>
+                {/if}
+                
                 <button
                   role="option"
                   aria-selected={$selection.callIndex === call.originalIndex}
@@ -341,6 +394,13 @@
                     {/if}
                   {/if}
                 </button>
+                
+                <!-- Add dashed separator when exiting sub-agent context -->
+                {#if isSubAgentExit(call, call.originalIndex)}
+                  <div class="subagent-separator subagent-exit" aria-label="Exiting sub-agent context">
+                    <span class="separator-line"></span>
+                  </div>
+                {/if}
               {/each}
             </div>
           </div>
@@ -720,44 +780,33 @@ button.topchip .subagent-trigger {
   }
 }
 
-/* Sub-agent call styling - visual distinction for calls from sub-agents */
-button.subagent-call {
-  margin-left: 12px;
-  position: relative;
-  border-left: 3px solid rgba(255, 165, 0, 0.5);
-  background: linear-gradient(135deg, 
-    color-mix(in srgb, var(--chip-color) 85%, #ff8800 15%) 0%, 
-    color-mix(in srgb, var(--chip-color) 75%, #ff8800 25%) 100%);
+/* Dashed separator for sub-agent entry/exit */
+.subagent-separator {
+  margin: 6px 0;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
 }
 
-button.subagent-call::before {
-  content: '↳';
-  position: absolute;
-  left: -20px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.9rem;
-  color: rgba(255, 165, 0, 0.7);
-  font-weight: bold;
-}
-
-button.topchip.subagent-call {
-  margin-left: 8px;
-  border-left-width: 2px;
-}
-
-button.topchip.subagent-call::before {
-  left: -16px;
-  font-size: 0.8rem;
+.subagent-separator .separator-line {
+  flex: 1;
+  height: 0;
+  border-top: 2px dashed rgba(100, 100, 100, 0.3);
 }
 
 @media (prefers-color-scheme: dark) {
-  button.subagent-call {
-    border-left-color: rgba(255, 185, 0, 0.6);
+  .subagent-separator .separator-line {
+    border-top-color: rgba(200, 200, 200, 0.3);
   }
-  button.subagent-call::before {
-    color: rgba(255, 185, 0, 0.8);
-  }
+}
+
+/* Sub-agent call styling - simple indentation */
+button.subagent-call {
+  margin-left: 16px;
+}
+
+button.topchip.subagent-call {
+  margin-left: 12px;
 }
 
 button.topchip.selected { 
