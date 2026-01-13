@@ -144,8 +144,24 @@ This repository now includes a Svelte + Vite UI (in `src/`) that can be built an
 
 ### How it works
 
-1. A workflow at `.github/workflows/deploy.yml` builds the site on every push to `main` (or when manually dispatched) and publishes the `dist` output to GitHub Pages.
+1. A workflow at `.github/workflows/deploy-pages.yml` builds the site on every push to `main` (or when manually dispatched) and publishes the `dist` output to GitHub Pages.
 2. The Vite config dynamically sets the correct `base` path when deployed under the repository subpath (e.g. `https://<user>.github.io/<repo>/`).
+
+### PR Preview Deployments 🚀
+
+When you create a pull request, a preview deployment is automatically created! This allows you to:
+- **View changes live** before merging to main
+- **Share previews** with reviewers via a unique URL
+- **Test changes** in a production-like environment
+
+Each PR gets its own preview at: `https://<user>.github.io/<repo>/pr-<number>/`
+
+The preview:
+- ✅ Updates automatically when you push new commits
+- ✅ Gets a comment on the PR with the preview link
+- ✅ Is automatically cleaned up when the PR is closed or merged
+
+See `.github/README-PAGES.md` for more details.
 
 ### One‑time repository setup
 
