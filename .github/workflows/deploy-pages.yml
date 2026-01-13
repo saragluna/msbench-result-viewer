@@ -28,7 +28,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Build
         run: |
@@ -48,21 +48,29 @@ jobs:
           # Create a temporary directory for PR previews
           mkdir -p /tmp/pr-previews
           
+          # Save the current commit for later reference
+          ORIGINAL_REF="${{ github.sha }}"
+          
           # Fetch gh-pages branch if it exists
           git fetch origin gh-pages || true
           
           # If gh-pages exists, extract PR preview directories
           if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
             git checkout origin/gh-pages
-            # Copy any pr-* directories to temp location
-            if ls pr-* 2>/dev/null; then
-              cp -r pr-* /tmp/pr-previews/ || true
-            fi
-            git checkout -
+            # Copy any pr-* directories to temp location (with safe glob handling)
+            shopt -s nullglob
+            for dir in pr-*/; do
+              if [ -d "$dir" ]; then
+                cp -r "$dir" /tmp/pr-previews/
+              fi
+            done
+            shopt -u nullglob
+            # Return to original commit
+            git checkout "$ORIGINAL_REF"
           fi
           
           # Move PR previews back into dist
-          if [ -d "/tmp/pr-previews" ] && [ "$(ls -A /tmp/pr-previews)" ]; then
+          if [ -d "/tmp/pr-previews" ] && [ -n "$(ls -A /tmp/pr-previews 2>/dev/null)" ]; then
             cp -r /tmp/pr-previews/* dist/
           fi
 
