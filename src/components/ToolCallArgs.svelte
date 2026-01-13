@@ -1,8 +1,6 @@
 <script>
-  import { formatReplaceDiff, parseJSONSafe } from '../lib/utils.js';
+  import { formatReplaceDiff, formatMultiReplaceDiff, formatTodoListHtml, parseJSONSafe } from '../lib/utils.js';
   export let call;
-  export let reqIndex = undefined; // Optional: request index
-  export let callIndex = undefined; // Optional: call index within request
 
   // view modes:
   //  diff       - show visual diff for replace_string_in_file
@@ -18,6 +16,8 @@
   
   $: parsedArgs = typeof rawArguments === 'string' ? parseJSONSafe(rawArguments) : rawArguments;
   $: isReplace = toolName === 'replace_string_in_file';
+  $: isMultiReplace = toolName === 'multi_replace_string_in_file';
+  $: isManageTodoList = toolName === 'manage_todo_list';
   $: isCreateFile = toolName === 'create_file';
   $: isApplyPatch = toolName === 'apply_patch';
 
@@ -99,6 +99,10 @@
   $: if (view === 'auto') {
     if (isReplace && parsedArgs?.oldString) {
       view = 'diff';
+    } else if (isMultiReplace && Array.isArray(parsedArgs?.replacements) && parsedArgs.replacements.length) {
+      view = 'diff';
+    } else if (isManageTodoList && Array.isArray(parsedArgs?.todoList)) {
+      view = 'todo';
     } else if (isCreateFile && parsedArgs?.content !== undefined) {
       view = 'formatted';
     } else if (isApplyPatch && patchBlocks.length) {
@@ -107,15 +111,18 @@
   }
 
   function toggleDiff () { view = view === 'diff' ? 'raw' : 'diff'; }
+  function toggleTodo () { view = view === 'todo' ? 'raw' : 'todo'; }
   function toggleFormatted () { view = view === 'formatted' ? 'raw' : 'formatted'; }
   function togglePatch () { view = view === 'patch' ? 'raw' : 'patch'; }
 </script>
 
 <div class="fn-args">
-  {#if isReplace}
+  {#if isReplace || isMultiReplace}
     <div class="actions"><button on:click={toggleDiff}>{view === 'diff' ? 'Raw JSON' : 'View Diff'}</button></div>
-    {#if view === 'diff' && parsedArgs?.oldString}
-      <div class="diff-wrapper" aria-label="Replace diff view">{@html formatReplaceDiff()}</div>
+    {#if view === 'diff' && (parsedArgs?.oldString || (Array.isArray(parsedArgs?.replacements) && parsedArgs.replacements.length))}
+      <div class="diff-wrapper" aria-label="Replace diff view">
+        {@html isMultiReplace ? formatMultiReplaceDiff(parsedArgs) : formatReplaceDiff(parsedArgs)}
+      </div>
     {:else}
       <pre>{formattedArgs}</pre>
     {/if}
@@ -136,8 +143,7 @@
         {#each patchBlocks as blk, bi}
           <div class="patch-file" data-action={blk.action} data-idx={bi}>
             <div class="patch-head">
-              <span class="patch-action tag-{blk.action.toLowerCase()}">{blk.action}</span>
-              <span class="patch-path" title={blk.filePath}>{blk.filePath}</span>
+              <span class="patch-path" title={blk.filePath}><span class="patch-action-text">{blk.action}:</span> {blk.filePath}</span>
             </div>
             {#if blk.action === 'Delete'}
               <div class="patch-deleted-note">File deleted</div>
@@ -153,7 +159,16 @@
       <pre>{formattedArgs}</pre>
     {/if}
   {:else}
-    <pre>{formattedArgs}</pre>
+    {#if isManageTodoList}
+      <div class="actions"><button on:click={toggleTodo}>{view === 'todo' ? 'Raw JSON' : 'Todo View'}</button></div>
+      {#if view === 'todo' && Array.isArray(parsedArgs?.todoList)}
+        <div class="todo-wrapper" aria-label="Todo list view">{@html formatTodoListHtml(parsedArgs)}</div>
+      {:else}
+        <pre>{formattedArgs}</pre>
+      {/if}
+    {:else}
+      <pre>{formattedArgs}</pre>
+    {/if}
   {/if}
 </div>
 
@@ -166,23 +181,45 @@
 .path { background:#6f42c1; color:#fff; padding:3px 8px; border-radius:3px; font-size:.7rem; }
 /* Diff HTML (injected) styles */
 :global(.diff-container) { background:#f8f9fa; border:1px solid #dee2e6; border-radius:6px; }
-:global(.diff-header) { background:#e9ecef; padding:6px 10px; border-bottom:1px solid #dee2e6; font-weight:600; font-size:.8rem; }
+:global(.diff-header) { background: var(--color-accent); color:#fff; padding:8px 12px; border-bottom:1px solid rgba(0,0,0,0.08); font-weight:600; font-size:.7rem; letter-spacing:0; text-transform:none; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; overflow-wrap:anywhere; word-break:break-word; white-space:normal; }
 :global(.diff-section h4) { margin:0; padding:6px 10px; font-size:.8rem; }
 :global(.diff-old) { background:#f8d7da; border-left:4px solid #dc3545; }
 :global(.diff-old h4) { color:#721c24; background:#f5c6cb; }
 :global(.diff-new) { background:#d4edda; border-left:4px solid #28a745; }
 :global(.diff-new h4) { color:#155724; background:#c3e6cb; }
 :global(.diff-content) { padding:10px; font-family:monospace; font-size:.75rem; line-height:1.4; white-space:pre-wrap; overflow:auto; max-height:250px; }
+:global(.diff-note) { padding:6px 10px; font-size:.72rem; color:#495057; border-bottom:1px solid #dee2e6; background:#fff; }
 
 /* Apply Patch visualization */
 .patch-view { display:flex; flex-direction:column; gap:10px; }
-.patch-file { border:1px solid #dee2e6; border-radius:6px; background:#f8f9fa; box-shadow:0 1px 2px rgba(0,0,0,0.05); overflow:hidden; }
-.patch-head { display:flex; align-items:center; gap:8px; padding:6px 10px; background:#e9ecef; border-bottom:1px solid #dee2e6; font-weight:600; font-size:.72rem; font-family:monospace; }
-.patch-action { text-transform:uppercase; font-size:.55rem; letter-spacing:.6px; padding:3px 6px; border-radius:10px; font-weight:700; }
-.patch-action.tag-update { background:#dbeafe; color:#1e3a8a; }
-.patch-action.tag-add { background:#dcfce7; color:#166534; }
-.patch-action.tag-delete { background:#fee2e2; color:#991b1b; }
-.patch-path { font-family:monospace; font-size:.6rem; background:#343a40; color:#f8f9fa; padding:3px 6px; border-radius:4px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.patch-file { border:1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); box-shadow: var(--shadow-sm); overflow:hidden; }
+.patch-head {
+  display:flex;
+  flex-wrap: wrap;
+  align-items:flex-start;
+  gap:8px;
+  padding:8px 12px;
+  background: var(--color-accent);
+  color:#fff;
+  border-bottom:1px solid rgba(0,0,0,0.08);
+  font-weight:600;
+  font-size:.7rem;
+  font-family: var(--font-mono);
+}
+.patch-action-text { font-weight:800; }
+.patch-path {
+  flex: 1 1 auto;
+  min-width: 240px;
+  font-family: var(--font-mono);
+  font-size: .7rem;
+  color:#fff;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
 .patch-code { background:#fff; margin:0; padding:8px 10px; font-family:monospace; font-size:.68rem; line-height:1.25; overflow:auto; max-height:320px; border-top:1px solid #f1f3f5; }
 .patch-code::-webkit-scrollbar { height:8px; width:8px; }
 .patch-code::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:6px; }
@@ -196,9 +233,9 @@
 :global(.patch-code .pl.hunk) { background:#eff6ff; color:#1e3a8a; border-left-color:#3b82f6; font-weight:600; }
 :global(.patch-code .pl.ctx) { color:#374151; }
 @media (prefers-color-scheme: dark) {
-  .patch-file { background:#1e293b; border-color:#334155; }
-  .patch-head { background:#0f172a; border-bottom-color:#334155; }
-  .patch-path { background:#475569; color:#f1f5f9; }
+  .patch-file { background: var(--color-surface); border-color: var(--color-border); }
+  .patch-head { background: var(--color-accent); border-bottom-color: rgba(0,0,0,0.25); }
+  .patch-path { color:#fff; }
   .patch-code { background:#0f172a; border-top-color:#1e293b; }
   :global(.patch-code .pl.ctx) { color:#cbd5e1; }
   :global(.patch-code .pl.add) { background:rgba(16,185,129,0.15); color:#6ee7b7; border-left-color:#10b981; }

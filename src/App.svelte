@@ -171,7 +171,7 @@
         <div class="empty-state tall">
           <h2>No data loaded</h2>
           <p>Drag & drop a log file to begin.</p>
-          <p class="file-hint">Supported: <code>sim-requests-*.txt</code>, <code>*-fetchlog-*.txt</code>, or any valid JSON log file</p>
+          <p class="file-hint">Supported: <code>sim‑requests-*.txt</code>, <code>*‑fetchlog‑*.txt</code>, or any valid JSON log file</p>
         </div>
       {:else}
         <RequestDetail />

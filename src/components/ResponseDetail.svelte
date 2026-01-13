@@ -1,6 +1,8 @@
 <script>
   import ToolCallArgs from './ToolCallArgs.svelte';
   import { toolCallResults } from '../lib/stores.js';
+  import { formatReplaceDiff, formatMultiReplaceDiff, formatTodoListHtml, parseReplaceStringPayload, parseMultiReplaceStringPayload, parseManageTodoListPayload } from '../lib/utils.js';
+  import { tick } from 'svelte';
 
   export let current;
   export let req;
@@ -68,6 +70,29 @@
       else if (line.startsWith('@@')) cls = 'hunk';
       return `<span class="pl ${cls}">${esc}</span>`;
     }).join('\n');
+  }
+
+  function getToolName(call) {
+    return call?.name || call?.function?.name || '';
+  }
+
+  function renderToolResult(call, resultText) {
+    const toolName = getToolName(call);
+    if (!resultText || typeof resultText !== 'string') return null;
+
+    if (toolName === 'replace_string_in_file') {
+      const parsed = parseReplaceStringPayload(resultText);
+      if (parsed) return formatReplaceDiff(parsed);
+    }
+    if (toolName === 'multi_replace_string_in_file') {
+      const parsed = parseMultiReplaceStringPayload(resultText);
+      if (parsed) return formatMultiReplaceDiff(parsed);
+    }
+    if (toolName === 'manage_todo_list') {
+      const parsed = parseManageTodoListPayload(resultText);
+      if (parsed) return formatTodoListHtml(parsed);
+    }
+    return null;
   }
   $: responseTextParts = req?.response?.value || [];
   $: patchVisualizationBlocks = hasAnalyzeFilesSystemMsg ? responseTextParts.filter(t => isPatchLike(t)).flatMap(t => parsePatchBlocks(extractPatch(t))) : [];
@@ -193,6 +218,94 @@
   function toggleResultById(id) {
     const open = resultOpen[id] !== false; // treat undefined as open
     resultOpen = { ...resultOpen, [id]: !open };
+  }
+
+  // Rendered vs raw view for tool results that support HTML rendering
+  let resultRenderMode = {}; // id -> 'rendered'|'raw'
+  function toggleResultRenderMode(id) {
+    const mode = resultRenderMode[id] || 'rendered';
+    resultRenderMode = { ...resultRenderMode, [id]: mode === 'rendered' ? 'raw' : 'rendered' };
+  }
+
+  let lastAutoScrollKey;
+  let callsScrollEl;
+
+  function isVerticallyScrollable(el) {
+    if (!el) return false;
+    return (el.scrollHeight - el.clientHeight) > 2;
+  }
+
+  function clamp(n, min, max) {
+    if (!Number.isFinite(n)) return min;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function nextFrame() {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+  }
+
+  function scrollContainerToTarget(container, target, { align = 'top', offset = 8 } = {}) {
+    if (!container || !target) return false;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    let nextTop = container.scrollTop + (targetRect.top - containerRect.top) - offset;
+    if (align === 'center') {
+      const centerOffset = (container.clientHeight / 2) - (targetRect.height / 2);
+      nextTop = container.scrollTop + (targetRect.top - containerRect.top) - centerOffset;
+    }
+    if (Number.isFinite(nextTop)) {
+      const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      nextTop = clamp(nextTop, 0, maxTop);
+      // Deterministic jump: avoid smooth scrolling which can land mid-block if layout changes.
+      container.scrollTop = nextTop;
+      requestAnimationFrame(() => {
+        container.scrollTop = nextTop;
+      });
+      return true;
+    }
+    return false;
+  }
+
+  async function scrollToSelectedResult() {
+    const idx = current?.callIndex;
+    if (idx === null || idx === undefined) return;
+    await tick();
+    const callEl = document.getElementById(`resp-fncall-${idx}`);
+    const resultEl = document.getElementById(`resp-fnresult-${idx}`);
+    const headEl = document.getElementById(`resp-fnhead-${idx}`) || callEl?.querySelector?.('.toolcall-head');
+    const target = headEl || resultEl || callEl;
+    if (!target) return;
+
+    const tryScroll = () => {
+      // Only use callsScrollEl if it is the *actual* scrolling container.
+      // When tool results are huge, this element often expands with the page and becomes non-scrollable.
+      if (callsScrollEl && isVerticallyScrollable(callsScrollEl)) {
+        return scrollContainerToTarget(callsScrollEl, target, { align: 'center' });
+      }
+      return false;
+    };
+
+    // First attempt
+    if (!tryScroll()) {
+      // Browser-managed scrolling (will pick the nearest scrollable ancestor, including the page).
+      target.scrollIntoView({ behavior: 'auto', block: 'center' });
+    }
+
+    // Large <pre> blocks can shift layout after initial paint; re-apply once more after frames settle.
+    await nextFrame();
+    await tick();
+    if (!tryScroll()) {
+      target.scrollIntoView({ behavior: 'auto', block: 'center' });
+    }
+  }
+
+  // When selection changes from the left panel, jump to the tool result in Response.
+  $: if (req?.response && (req.response.copilotFunctionCalls?.length || req.response.toolCalls?.length)) {
+    const key = `${req.response.requestId || req.response.serverRequestId || ''}:${current?.callIndex}`;
+    if (key !== lastAutoScrollKey) {
+      lastAutoScrollKey = key;
+      scrollToSelectedResult();
+    }
   }
 </script>
 
@@ -364,40 +477,58 @@
         <details class="collapsible" open data-role="response-calls" aria-label="Response tool calls group">
           <summary><span class="caret"></span><h3>Tool Calls <span class="count-badge">{toolCallsList.length}</span></h3></summary>
           <div class="collapsible-body">
-            <div class="scroll-area calls-scroll" role="region" aria-label="Tool calls within response (each in its own section)">
+            <div class="scroll-area calls-scroll" bind:this={callsScrollEl} role="region" aria-label="Tool calls within response (each in its own section)">
               {#each toolCallsList as call, ci}
                 {#key ci}
-                <section class="toolcall-section {current.callIndex === ci ? 'active' : ''}" id={'resp-fncall-' + ci} data-call-id={call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)}>
-                  <header class="toolcall-head">
+                <details
+                  class="prompt-collapsible toolcall-section {current.callIndex === ci ? 'active' : ''}"
+                  id={'resp-fncall-' + ci}
+                  data-call-id={call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)}
+                  open={current.callIndex === ci}
+                >
+                  <summary class="toolcall-head" id={'resp-fnhead-' + ci}>
+                    <span class="mini-caret"></span>
                     <div class="tool-title-area">
                       <h5 class="no-transform">Call {ci + 1}: {displayToolName(call)} {#if (hasAnalyzeFilesSystemMsg && (call.name?.toLowerCase?.() === 'none')) || displayToolName(call) === 'patch_file'}<span class="infer-badge" title="Inferred tool name">INFERRED</span>{/if}</h5>
                       {#if current.callIndex === ci}<span class="selected-badge">Active</span>{/if}
                     </div>
-                  </header>
-                  <ToolCallArgs {call} reqIndex={current.requestIndex} callIndex={ci} />
-                  {#if call.id || call.tool_call_id || call.toolCallId || true}
-                    {#if $toolCallResults[call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)]?.text}
-                      {#if resultOpen[call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)] !== false}
-                        <div class="tool-result-block open" aria-label="Tool call result output">
-                          <div class="tool-result-head-row">
-                            <div class="tool-result-head">Result</div>
-                            <button class="result-toggle" type="button" on:click={() => toggleResultById(call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci))}>Hide</button>
+                  </summary>
+                  <div class="prompt-body">
+                    <ToolCallArgs {call} />
+                    {#if call.id || call.tool_call_id || call.toolCallId || true}
+                      {#if $toolCallResults[call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)]?.text}
+                        {@const resultText = $toolCallResults[call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)].text}
+                        {@const resultDiffHtml = renderToolResult(call, resultText)}
+                        {@const resultKey = call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)}
+                        {#if resultOpen[call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)] !== false}
+                          <div class="tool-result-block open" id={'resp-fnresult-' + ci} aria-label="Tool call result output">
+                            <div class="tool-result-head-row">
+                              <div class="tool-result-head">Result</div>
+                              {#if resultDiffHtml}
+                                <button class="result-toggle" type="button" on:click={() => toggleResultRenderMode(resultKey)}>{(resultRenderMode[resultKey] || 'rendered') === 'rendered' ? 'Raw' : 'Rendered'}</button>
+                              {/if}
+                              <button class="result-toggle" type="button" on:click={() => toggleResultById(call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci))}>Hide</button>
+                            </div>
+                            {#if resultDiffHtml && (resultRenderMode[resultKey] || 'rendered') === 'rendered'}
+                              <div class="diff-wrapper" aria-label="Tool result rendered view">{@html resultDiffHtml}</div>
+                            {:else}
+                              <pre class="code-block small">{resultText}</pre>
+                            {/if}
                           </div>
-                          <pre class="code-block small">{$toolCallResults[call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci)].text}</pre>
-                        </div>
+                        {:else}
+                          <div class="tool-result-block collapsed" id={'resp-fnresult-' + ci} aria-label="Tool call result output hidden">
+                            <div class="tool-result-head-row">
+                              <div class="tool-result-head">Result (hidden)</div>
+                              <button class="result-toggle" type="button" on:click={() => toggleResultById(call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci))}>Show</button>
+                            </div>
+                          </div>
+                        {/if}
                       {:else}
-                        <div class="tool-result-block collapsed" aria-label="Tool call result output hidden">
-                          <div class="tool-result-head-row">
-                            <div class="tool-result-head">Result (hidden)</div>
-                            <button class="result-toggle" type="button" on:click={() => toggleResultById(call.id || call.tool_call_id || call.toolCallId || ('idx_' + ci))}>Show</button>
-                          </div>
-                        </div>
+                        <div class="tool-result-block empty" id={'resp-fnresult-' + ci} aria-label="Tool call result output missing"><em class="text-soft">No result output located for this call id</em></div>
                       {/if}
-                    {:else}
-                      <div class="tool-result-block empty" aria-label="Tool call result output missing"><em class="text-soft">No result output located for this call id</em></div>
                     {/if}
-                  {/if}
-                </section>
+                  </div>
+                </details>
                 {/key}
               {/each}
             </div>
@@ -473,6 +604,17 @@
   color: #059669;
 }
 
+/* Diff HTML (injected) styles for tool results */
+:global(.diff-container) { background:#f8f9fa; border:1px solid #dee2e6; border-radius:6px; }
+:global(.diff-header) { background: var(--color-accent); color:#fff; padding:8px 12px; border-bottom:1px solid rgba(0,0,0,0.08); font-weight:600; font-size:.7rem; letter-spacing:0; text-transform:none; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; overflow-wrap:anywhere; word-break:break-word; white-space:normal; }
+:global(.diff-section h4) { margin:0; padding:6px 10px; font-size:.8rem; }
+:global(.diff-old) { background:#f8d7da; border-left:4px solid #dc3545; }
+:global(.diff-old h4) { color:#721c24; background:#f5c6cb; }
+:global(.diff-new) { background:#d4edda; border-left:4px solid #28a745; }
+:global(.diff-new h4) { color:#155724; background:#c3e6cb; }
+:global(.diff-content) { padding:10px; font-family:monospace; font-size:.75rem; line-height:1.4; white-space:pre-wrap; overflow:auto; max-height:250px; }
+:global(.diff-note) { padding:6px 10px; font-size:.72rem; color:#495057; border-bottom:1px solid #dee2e6; background:#fff; }
+
 .main-section .group {
   margin: 0;
   padding: 0 16px 12px;
@@ -490,16 +632,25 @@
 
 .toolcall-section { 
   border:1px solid var(--color-border); 
-  border-radius: var(--radius-sm); 
-  padding:8px 10px 12px; 
+  border-radius: var(--radius-sm);
   background:linear-gradient(180deg,var(--color-surface),rgba(255,255,255,0.55)); 
-  box-shadow: var(--shadow-sm); 
+  box-shadow: var(--shadow-sm);
+  overflow:hidden;
 }
 .toolcall-section.active { border-color: var(--color-warning); box-shadow:0 0 0 2px rgba(234,179,8,.25); }
-.toolcall-head { display:flex; align-items:center; justify-content:space-between; margin:0 0 6px; }
-.tool-title-area { display:flex; align-items:center; gap:10px; }
+.toolcall-section > summary { list-style:none; cursor:pointer; user-select:none; }
+.toolcall-section > summary::-webkit-details-marker { display:none; }
+.toolcall-head { display:flex; align-items:center; gap:8px; justify-content:space-between; margin:0; padding:8px 10px; }
+.toolcall-section > summary.toolcall-head:hover { background:rgba(0,0,0,0.03); }
+.toolcall-section.active > summary.toolcall-head { background:rgba(234,179,8,0.08); }
+.tool-title-area { display:flex; align-items:center; gap:10px; flex:1; }
 .toolcall-head h5 { margin:0; font-size:.72rem; letter-spacing:.5px; font-weight:700; }
 .toolcall-head h5.no-transform { text-transform: none; }
+
+.mini-caret { width:8px; height:8px; border-right:2px solid var(--color-text-soft); border-bottom:2px solid var(--color-text-soft); transform: rotate(-45deg); transition: transform .25s; margin-right:2px; flex-shrink:0; }
+.toolcall-section[open] > summary .mini-caret { transform: rotate(45deg); }
+
+.toolcall-section .prompt-body { padding:8px 10px 12px; border-top:1px solid var(--color-border); display:flex; flex-direction:column; gap:6px; }
 /* Inferred badge */
 .infer-badge { background:#7c3aed; color:#fff; font-size:.45rem; letter-spacing:.6px; padding:3px 6px; border-radius:10px; font-weight:700; vertical-align:middle; position:relative; top:-1px; }
 @media (prefers-color-scheme: dark) { .infer-badge { background:#7c3aed; color:#f1f5f9; } }
@@ -680,6 +831,8 @@ details.collapsible > summary:focus-visible { outline:2px solid var(--color-acce
   details.collapsible .collapsible-body { border-top:1px solid var(--color-border-strong); }
   .caret { border-color: var(--color-text-soft); }
   .toolcall-section { background:rgba(255,255,255,0.03); border-color: var(--color-border-strong); }
-  .toolcall-section.active { background:#3a2d06; }
+  .toolcall-section > summary.toolcall-head:hover { background:rgba(255,255,255,0.05); }
+  .toolcall-section.active > summary.toolcall-head { background:rgba(234,179,8,0.14); }
+  .toolcall-section .prompt-body { border-top:1px solid var(--color-border-strong); }
 }
 </style>

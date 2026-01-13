@@ -14,6 +14,29 @@
   $: systemMessages = req?.requestMessages?.filter(m => m.role === 'system') || [];
   $: userMessages = req?.requestMessages?.filter(m => m.role === 'user') || [];
 
+  // Optional top-level prompt (new-agent format)
+  const MAX_PROMPT_PREVIEW_CHARS = 180;
+  function buildPromptPreview(text) {
+    if (typeof text !== 'string') return { preview: '', truncated: false };
+    const normalized = text.replace(/\r\n/g, '\n');
+    const lines = normalized.split('\n');
+    const firstNonEmpty = lines.find(l => l.trim().length > 0);
+    let preview = (firstNonEmpty ?? lines[0] ?? '').trim();
+    let truncated = lines.length > 1;
+    if (preview.length > MAX_PROMPT_PREVIEW_CHARS) {
+      preview = preview.slice(0, MAX_PROMPT_PREVIEW_CHARS).trimEnd();
+      truncated = true;
+    }
+    if (truncated) preview = preview.replace(/\s*$/, '') + '…';
+    return { preview, truncated };
+  }
+
+  let showFullPrompt = false;
+  let lastReq;
+  $: if (req !== lastReq) { showFullPrompt = false; lastReq = req; }
+  $: promptText = (typeof req?.prompt === 'string' ? req.prompt : '');
+  $: promptInfo = promptText && promptText.trim() ? buildPromptPreview(promptText) : { preview: '', truncated: false };
+
   function buildRawPayload() {
     if (!req) return '';
     // Provide both the original request object and response for completeness
@@ -427,9 +450,27 @@
 {:else}
   <div class="panel detail-panel">
     <header class="hdr {hideFrame ? 'compact' : ''}">
-      <div>
-        <span class="rid">Request ID: {req?.response?.requestId || 'N/A'}</span>
-        <span class="model-info">Model: {req?.model || 'Unknown'}</span>
+      <div class="hdr-left">
+        <span class="agent-info">Agent: {req?.name || 'default agent'}</span>
+        {#if promptText && promptText.trim()}
+          <div class="agent-prompt" data-expanded={showFullPrompt ? 'true' : 'false'}>
+            <div class="agent-prompt-head">
+              <span class="agent-prompt-label">Prompt</span>
+              <button class="raw-toggle-btn prompt-toggle-btn" type="button" on:click={() => (showFullPrompt = !showFullPrompt)}>
+                {showFullPrompt ? 'Collapse' : 'Expand'}
+              </button>
+            </div>
+            {#if showFullPrompt}
+              <pre class="code-block agent-prompt-body full">{promptText}</pre>
+            {:else}
+              <div class="code-block agent-prompt-body preview" title={promptText}>{promptInfo.preview}</div>
+            {/if}
+          </div>
+        {/if}
+        <div class="hdr-subline">
+          <span class="rid">Request ID: {req?.response?.requestId || 'N/A'}</span>
+          <span class="model-info">Model: {req?.model || 'Unknown'}</span>
+        </div>
       </div>
       <div class="actions">
         <button class="copy-raw-btn" on:click={copyRaw} aria-label="Copy raw request and response" disabled={!req}>
@@ -902,10 +943,31 @@
 }
 
 /* base container inherits panel styles from global */
-.hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--color-border); padding-bottom:8px; }
+.detail-panel > header.hdr {
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  flex-wrap: nowrap;
+  gap: 14px;
+  margin-bottom:12px;
+  border-bottom:1px solid var(--color-border);
+  padding-bottom:8px;
+  background: var(--color-surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.hdr { display:flex; }
 .hdr.compact { margin-bottom:8px; padding-bottom:6px; }
-.detail-panel { max-width:100%; overflow:hidden; }
+.detail-panel { max-width:100%; overflow-x:hidden; overflow-y:visible; }
 .detail-panel pre.code-block, .detail-panel pre { max-width:100%; }
+.agent-prompt { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.agent-prompt-head { display:flex; align-items:center; gap:10px; min-width:0; }
+.agent-prompt-label { font-size:.65rem; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color: var(--color-text-soft); }
+.prompt-toggle-btn { margin-left:0; }
+.agent-prompt-body { margin:0; font-size:.72rem; line-height:1.35; }
+.agent-prompt-body.preview { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.actions { margin-left:auto; align-self:flex-start; }
 .msg-section { border:1px solid var(--color-border); border-radius: var(--radius-sm); padding:10px 12px 12px; background:linear-gradient(180deg,var(--color-surface),rgba(255,255,255,0.55)); box-shadow: var(--shadow-sm); }
 /* spacing handled by normal flow inside scroll container; optional adjacency rule removed */
 .msg-head { display:flex; align-items:center; justify-content:space-between; margin:0 0 6px; }
@@ -1208,17 +1270,18 @@ details.prompt-collapsible.tool-call-item[open] { background:#fff3cf; }
   details.collapsible .msg-section.role-system { background:#25313d; }
 }
 .actions { display:flex; align-items:center; gap:8px; }
-.copy-raw-btn { background: var(--color-accent); color:#fff; border:none; font-size:.65rem; padding:8px 10px; border-radius: var(--radius-sm); font-weight:600; letter-spacing:.5px; cursor:pointer; box-shadow: var(--shadow-sm); display:inline-flex; align-items:center; gap:4px; transition: background .2s, box-shadow .2s, transform .15s; }
+.copy-raw-btn { background: var(--color-accent); color:#fff; border:none; font-size:.65rem; padding:8px 10px; border-radius: var(--radius-sm); font-weight:600; letter-spacing:.5px; cursor:pointer; box-shadow: var(--shadow-sm); display:inline-flex; align-items:center; gap:4px; transition: background .2s, box-shadow .2s, transform .15s; white-space:nowrap; }
 .copy-raw-btn:hover:not([disabled]) { background: var(--color-accent-hover); box-shadow: var(--shadow-md); }
 .copy-raw-btn:active:not([disabled]) { transform: translateY(1px); box-shadow: var(--shadow-sm); }
 .copy-raw-btn[disabled] { background: var(--color-border); color: var(--color-text-soft); cursor:not-allowed; box-shadow:none; }
-.copy-raw-btn span { line-height:1; }
+.copy-raw-btn span { line-height:1; white-space:nowrap; }
+.hdr-left { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.hdr-subline { display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; min-width:0; }
+.agent-info { display:inline-block; width:fit-content; max-width:100%; font-weight:800; letter-spacing:.6px; font-size:.78rem; color: var(--color-accent); background: var(--color-accent-soft); border:1px solid var(--color-border); padding:4px 8px; border-radius: var(--radius-pill); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rid { font-weight:600; color: var(--color-accent); margin-right:12px; }
 .model-info { font-size:.7rem; color: var(--color-text-soft); letter-spacing:.6px; }
 .group { margin-top:32px; }
 .group h3 { margin:0 0 14px; font-size:1rem; letter-spacing:.4px; }
 pre { font-family: var(--font-mono); }
-/* Height constraints removed for messages-scroll to allow natural expansion */
-.panel { max-width:100%; overflow:hidden; }
 .panel .code-block, .panel pre { max-width:100%; overflow:auto; }
 </style>

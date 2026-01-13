@@ -64,8 +64,17 @@
   on:click={() => fileInput.click()}
   on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && fileInput.click()}>
   <div class="icon" aria-hidden="true">📁</div>
-  <div class="dd-text-main">{(dragOver || globalDrag) ? 'Release to Load' : 'Drop / Click'}</div>
-  <div class="dd-text-hint">Supports: sim-requests, fetchlog, or JSON files</div>
+  <div class="dd-text">
+    <div class="dd-text-main">{(dragOver || globalDrag) ? 'Release to Load' : 'Drop / Click'}</div>
+    <div class="dd-text-hint">
+      <span class="hint-label">Supports:</span>
+      <span class="hint-formats">
+        <span class="nowrap">sim‑requests</span>,
+        <span class="nowrap">fetchlog</span>,
+        or <span class="nowrap">vscode chat</span> files
+      </span>
+    </div>
+  </div>
   <input bind:this={fileInput} type="file" accept=".txt,.json" style="display:none" on:change={onFile}>
   {#if globalDrag && !dragOver}
     <div class="global-overlay">Drop file anywhere to load</div>
@@ -73,15 +82,19 @@
 </div>
 
 <style>
-.drag-drop { border:2px dashed #cbd5e1; padding:18px 14px 16px; border-radius:10px; text-align:center; cursor:pointer; transition: .25s; background:#f8fafc; position:relative; }
+.drag-drop { border:2px dashed #cbd5e1; padding:18px 14px 16px; border-radius:10px; text-align:left; cursor:pointer; transition: .25s; background:#f8fafc; position:relative; display:flex; align-items:center; justify-content:center; gap:12px; }
 .drag-drop.compact { padding:14px 12px 12px; }
 .drag-drop.over { border-color:#22c55e; background:#ecfdf5; }
 .global-overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:600; letter-spacing:.4px; color:#15803d; background:rgba(34,197,94,0.08); border-radius:inherit; pointer-events:none; animation:fadeIn .25s ease; }
 @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
 .icon { font-size:30px; margin:0 0 6px; color:#475569; line-height:1; }
 .drag-drop.over .icon { color:#16a34a; }
+.dd-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .dd-text-main { font-size:.92rem; font-weight:700; letter-spacing:.2px; color:#334155; text-transform:none; }
-.dd-text-hint { font-size:.72rem; margin-top:4px; color:#64748b; font-weight:400; }
+.dd-text-hint { font-size:.72rem; margin-top:2px; color:#64748b; font-weight:400; line-height:1.25; }
+.hint-label { font-weight:600; margin-right:4px; }
+.hint-formats { opacity:0.95; }
+.nowrap { white-space:nowrap; }
 @media (prefers-color-scheme: dark) {
   .drag-drop { background:#1f2730; border-color:#334150; }
   .drag-drop.over { background:#112318; }

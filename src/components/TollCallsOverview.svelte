@@ -191,49 +191,33 @@
               <span class="rfs-line" aria-hidden="true"></span>
             </div>
           {/if}
-          {#if group.calls.length > 1}
-            <div class="request-group" data-request-index={group.requestIndex} data-request-id={requestRoundMap[gi].requestId} data-round={requestRoundMap[gi].roundNumber}>
-              <div class="group-calls-container" aria-label={`Request ${group.requestIndex + 1} with ${group.calls.length} calls`}>
-                {#each group.calls as call}
-                  <button
-                    role="option"
-                    aria-selected={$selection.callIndex === call.originalIndex}
-                    class:selected={$selection.callIndex === call.originalIndex}
-                    class:topchip={variant === 'top'}
-                    style="--chip-color:{call.color}"
-                    data-round={requestRoundMap[gi].roundNumber}
-                    data-req-info={`Request ${group.requestIndex + 1} • ${group.calls.length} calls`}
-                    data-call-index={call.originalIndex}
-          aria-label={'Tool call ' + (call.name || 'None') + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
-                    on:click={() => selectCall(call.originalIndex)}>
-                    <span class="num">{call.originalIndex + 1}</span>
-                    <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
-                    {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
-          {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
-                  </button>
-                {/each}
-              </div>
+          <div
+            class="request-group"
+            class:single-call={group.calls.length === 1}
+            data-request-index={group.requestIndex}
+            data-request-id={requestRoundMap[gi].requestId}
+            data-round={requestRoundMap[gi].roundNumber}>
+            <div class="group-calls-container" aria-label={`Request ${group.requestIndex + 1} with ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}>
+              {#each group.calls as call}
+                <button
+                  role="option"
+                  aria-selected={$selection.callIndex === call.originalIndex}
+                  class:selected={$selection.callIndex === call.originalIndex}
+                  class:topchip={variant === 'top'}
+                  style="--chip-color:{call.color}"
+                  data-round={requestRoundMap[gi].roundNumber}
+                  data-req-info={`Request ${group.requestIndex + 1} • ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}
+                  data-call-index={call.originalIndex}
+                  aria-label={'Tool call ' + (call.name || 'None') + (group.calls.length === 1 ? ' (single-call request)' : '') + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
+                  on:click={() => selectCall(call.originalIndex)}>
+                  <span class="num">{call.originalIndex + 1}</span>
+                  <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
+                  {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
+                  {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
+                </button>
+              {/each}
             </div>
-          {:else}
-            {#each group.calls as call}
-              <button
-                role="option"
-                aria-selected={$selection.callIndex === call.originalIndex}
-                class:selected={$selection.callIndex === call.originalIndex}
-                class:topchip={variant === 'top'}
-                style="--chip-color:{call.color}"
-                data-round={requestRoundMap[gi].roundNumber}
-                data-call-index={call.originalIndex}
-                data-req-info={`Request ${group.requestIndex + 1} • 1 call`}
-        aria-label={'Tool call ' + (call.name || 'None') + ' (single-call request)' + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
-                on:click={() => selectCall(call.originalIndex)}>
-                <span class="num">{call.originalIndex + 1}</span>
-                <span class="name">{displayCallName(call)}</span>{#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
-                {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary" aria-hidden="true">📋</span>{/if}
-        {#if call.request?.response?.type === 'failed'}<span class="fail-emoji" title="Failed response" aria-hidden="true">⚠️</span>{/if}
-              </button>
-            {/each}
-          {/if}
+          </div>
         {/key}
       {/each}
     </div>
@@ -401,16 +385,19 @@
 /* Compact frame for multi-call groups */
 .request-group { 
   border: 1px solid #e2e8f0; 
-  padding: 4px 6px 5px; 
+  padding: 5px 6px; 
   background: #f8fafc; 
-  border-radius: 6px; 
+  border-radius: var(--radius-md); 
   transition: all 0.2s ease; 
   overflow: visible; 
   box-shadow: 0 2px 3px rgba(0,0,0,0.05);
   display: inline-flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 2px;
+}
+
+.request-group.single-call {
+  padding: 4px 5px;
 }
 
 .request-group:hover { 
@@ -424,7 +411,7 @@
 .group-calls-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 6px;
   align-items: center;
   overflow: visible;
   max-height: none;
@@ -436,9 +423,8 @@
 /* Unified mixed layout: single-call buttons inline with multi-call framed groups */
 .mixed-calls { display:flex; flex-wrap:wrap; gap:6px; align-items:flex-start; }
 .mixed-calls.top-flow { display:flex; flex-wrap:wrap; gap:6px; }
-.mixed-calls > .request-group, .mixed-calls > button { vertical-align: top; }
-.request-group .group-calls-container button { margin:1px; }
-.request-group .group-calls-container button:first-child { margin-left:1px; }
+.mixed-calls > .request-group { vertical-align: top; }
+.request-group .group-calls-container button { margin:0; }
 
 /* Legacy single-line styles removed (replaced by mixed-calls) */
 
@@ -471,7 +457,7 @@ button {
   border: none; 
   color: #fff; 
   padding: 2px 7px; 
-  border-radius: 5px; 
+  border-radius: var(--radius-sm); 
   cursor: pointer; 
   font-size: .62rem; 
   line-height: 1.15; 
@@ -488,7 +474,7 @@ button {
   flex-shrink: 0;
   text-shadow: 0 1px 1px rgba(0,0,0,0.15);
   overflow: hidden;
-  margin: 2px;
+  margin: 0;
 }
 
 button:hover { 
@@ -521,7 +507,7 @@ button.topchip {
   border: none; 
   box-shadow: 0 1px 3px rgba(0,0,0,.15), 0 1px 2px rgba(0,0,0,.09), inset 0 1px 0 rgba(255,255,255,0.18); 
   font-weight: 600; 
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   position: relative;
 }
 
@@ -601,7 +587,7 @@ button.selected::after {
   content:""; 
   position:absolute; 
   inset:-4px; 
-  border-radius:8px; 
+  border-radius: calc(var(--radius-sm) + 2px);
   background:radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), rgba(255,255,255,0) 70%); 
   opacity:.55; 
   pointer-events:none; 
@@ -660,7 +646,7 @@ button[data-req-info]:hover::before, button[data-req-info]:focus-visible::before
 /* Full-width round separator */
 .round-full-separator { display:flex; align-items:center; gap:8px; width:100%; margin:8px 0 4px; padding:2px 4px; box-sizing:border-box; }
 .round-full-separator .rfs-line { flex:1; border-top:1px dotted #0ea5e9; opacity:.6; }
-.round-full-separator .rfs-label { font-size:.55rem; font-weight:700; color:#0ea5e9; letter-spacing:.6px; text-transform:uppercase; background:#fff; padding:2px 8px; border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,0.08); line-height:1; }
+.round-full-separator .rfs-label { font-size:.55rem; font-weight:700; color:#0ea5e9; letter-spacing:.6px; text-transform:uppercase; background:#fff; padding:2px 8px; border-radius: var(--radius-pill); box-shadow:0 1px 2px rgba(0,0,0,0.08); line-height:1; }
 .round-full-separator .rfs-label .rfs-id { 
   display:inline-block; 
   margin-left:6px; 

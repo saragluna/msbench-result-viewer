@@ -208,4 +208,88 @@ describe('UI Data Verification from Real Files', () => {
       }
     });
   });
+
+  it('marks summarize prompt as summarize pseudo-tool', () => {
+    const data = [
+      {
+        requestMessages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Summarize the following actions in 6-7 words using past tense: did X, did Y.'
+              }
+            ]
+          }
+        ],
+        response: {
+          type: 'success',
+          value: ['Did X and Y quickly.'],
+          copilotFunctionCalls: []
+        }
+      }
+    ];
+
+    loadDataFromText(JSON.stringify(data));
+    const callsData = get(functionCalls);
+
+    expect(callsData.length).toBe(1);
+    expect(callsData[0].name).toBe('summarize');
+    expect(callsData[0].conversationSummary).toBe(true);
+    expect(callsData[0].hasFunction).toBe(true);
+  });
+
+  it('new-agent result: extracts embedded tool_calls and dedupes by id', () => {
+    const filePath = resolve('data', 'newagent-sim-requests-java.json');
+    const fileContent = readFileSync(filePath, 'utf-8');
+
+    loadDataFromText(fileContent);
+
+    const callsData = get(functionCalls);
+    expect(callsData.length).toBeGreaterThan(0);
+
+    // Ensure we extracted calls with ids
+    const ids = callsData.filter(c => c.hasFunction && c.id).map(c => c.id);
+    expect(ids.length).toBeGreaterThan(0);
+
+    // Ensure ids are unique (new-agent repeats history across requests)
+    const unique = new Set(ids);
+    expect(unique.size).toBe(ids.length);
+  });
+
+  it('new-agent result: response.value is attached only to the last tool call in a request', () => {
+    const data = [
+      {
+        name: 'sample',
+        requestMessages: [
+          { role: 'user', content: [{ type: 'text', text: 'Do a thing' }] },
+          {
+            role: 'assistant',
+            tool_calls: [
+              { id: 'tc1', function: { name: 'tool_one', arguments: '{"a":1}' } },
+              { id: 'tc2', function: { name: 'tool_two', arguments: '{"b":2}' } }
+            ],
+            content: [{ type: 'text', text: 'Calling tools...' }]
+          }
+        ],
+        response: {
+          type: 'success',
+          value: ['Final assistant message after tools.']
+        }
+      }
+    ];
+
+    loadDataFromText(JSON.stringify(data));
+    const callsData = get(functionCalls).filter(c => c.hasFunction);
+
+    expect(callsData.length).toBe(2);
+    expect(callsData[0].id).toBe('tc1');
+    expect(callsData[1].id).toBe('tc2');
+
+    // Only the last tool call should keep response.value
+    expect(callsData[0].request?.response?.value).toBeUndefined();
+    expect(callsData[1].request?.response?.value).toEqual(['Final assistant message after tools.']);
+  });
+  
 });
