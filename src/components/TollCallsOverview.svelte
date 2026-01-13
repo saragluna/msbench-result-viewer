@@ -166,6 +166,44 @@
     }
     return null;
   }
+  
+  // Determine if a call belongs to a sub-agent
+  // A call belongs to a sub-agent if it comes after a runSubagent trigger
+  // and before the agent changes back or another runSubagent is called
+  function isSubAgentCall(call) {
+    if (!call || !requestRoundMap.length) return false;
+    
+    const callRequest = requestRoundMap.find(r => 
+      r.calls && r.calls.some(c => c.originalIndex === call.originalIndex)
+    );
+    if (!callRequest) return false;
+    
+    const callAgentName = callRequest.request?.name;
+    if (!callAgentName || callAgentName.includes('copilotLanguageModelWrapper')) {
+      return false;
+    }
+    
+    // Check if this agent is different from the main agent of the round
+    const mainAgent = getMainAgentForRound(callRequest.roundNumber);
+    if (!mainAgent || callAgentName === mainAgent) {
+      return false;
+    }
+    
+    // This is a sub-agent call if the agent is different from the main agent
+    return true;
+  }
+  
+  // Get the sub-agent name for display
+  function getSubAgentName(call) {
+    if (!call || !requestRoundMap.length) return '';
+    
+    const callRequest = requestRoundMap.find(r => 
+      r.calls && r.calls.some(c => c.originalIndex === call.originalIndex)
+    );
+    if (!callRequest) return '';
+    
+    return callRequest.request?.name || '';
+  }
   let scrollEl; // bound via bind:this
   let lastScrolledIndex = -1;
   async function scrollSelectedIntoView(center = true) {
@@ -231,8 +269,10 @@
             aria-selected={$selection.callIndex === call.originalIndex}
             class:selected={$selection.callIndex === call.originalIndex}
             class:topchip={variant === 'top'}
+            class:subagent-call={isSubAgentCall(call)}
             style="--chip-color:{call.color}"
             data-call-index={call.originalIndex}
+            data-subagent={isSubAgentCall(call) ? formatAgentName(getSubAgentName(call)) : ''}
             aria-label={'Tool call ' + (call.name || 'None') + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
             on:click={() => selectCall(call.originalIndex)}>
             <span class="num">{call.originalIndex + 1}</span>
@@ -281,10 +321,12 @@
                   aria-selected={$selection.callIndex === call.originalIndex}
                   class:selected={$selection.callIndex === call.originalIndex}
                   class:topchip={variant === 'top'}
+                  class:subagent-call={isSubAgentCall(call)}
                   style="--chip-color:{call.color}"
                   data-round={requestRoundMap[gi].roundNumber}
                   data-req-info={`Request ${group.requestIndex + 1} • ${group.calls.length} call${group.calls.length === 1 ? '' : 's'}`}
                   data-call-index={call.originalIndex}
+                  data-subagent={isSubAgentCall(call) ? formatAgentName(getSubAgentName(call)) : ''}
                   aria-label={'Tool call ' + (call.name || 'None') + (group.calls.length === 1 ? ' (single-call request)' : '') + (call.request?.response?.type === 'failed' ? ' (failed response)' : '')}
                   on:click={() => selectCall(call.originalIndex)}>
                   <span class="num">{call.originalIndex + 1}</span>
@@ -675,6 +717,46 @@ button.topchip .subagent-trigger {
   .subagent-trigger {
     background: rgba(255, 255, 255, 0.15);
     border-color: rgba(255, 255, 255, 0.25);
+  }
+}
+
+/* Sub-agent call styling - visual distinction for calls from sub-agents */
+button.subagent-call {
+  margin-left: 12px;
+  position: relative;
+  border-left: 3px solid rgba(255, 165, 0, 0.5);
+  background: linear-gradient(135deg, 
+    color-mix(in srgb, var(--chip-color) 85%, #ff8800 15%) 0%, 
+    color-mix(in srgb, var(--chip-color) 75%, #ff8800 25%) 100%);
+}
+
+button.subagent-call::before {
+  content: '↳';
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  color: rgba(255, 165, 0, 0.7);
+  font-weight: bold;
+}
+
+button.topchip.subagent-call {
+  margin-left: 8px;
+  border-left-width: 2px;
+}
+
+button.topchip.subagent-call::before {
+  left: -16px;
+  font-size: 0.8rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  button.subagent-call {
+    border-left-color: rgba(255, 185, 0, 0.6);
+  }
+  button.subagent-call::before {
+    color: rgba(255, 185, 0, 0.8);
   }
 }
 
