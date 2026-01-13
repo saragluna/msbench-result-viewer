@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,18 +43,33 @@ jobs:
             cp legacy/styles.css dist/legacy/
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
+      - name: Checkout gh-pages and preserve PR previews
+        run: |
+          # Create a temporary directory for PR previews
+          mkdir -p /tmp/pr-previews
+          
+          # Fetch gh-pages branch if it exists
+          git fetch origin gh-pages || true
+          
+          # If gh-pages exists, extract PR preview directories
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git checkout origin/gh-pages
+            # Copy any pr-* directories to temp location
+            if ls pr-* 2>/dev/null; then
+              cp -r pr-* /tmp/pr-previews/ || true
+            fi
+            git checkout -
+          fi
+          
+          # Move PR previews back into dist
+          if [ -d "/tmp/pr-previews" ] && [ "$(ls -A /tmp/pr-previews)" ]; then
+            cp -r /tmp/pr-previews/* dist/
+          fi
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          # Replace all content with new build (which includes preserved PR previews)
+          keep_files: false
