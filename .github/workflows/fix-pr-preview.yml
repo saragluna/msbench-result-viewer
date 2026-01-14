@@ -52,10 +52,13 @@ jobs:
           rm -rf pr-${{ inputs.pr_number }}
           cp -r dist pr-${{ inputs.pr_number }}
           
+          # Ensure CNAME file exists for custom domain
+          echo "saragluna.site" > CNAME
+          
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pr-${{ inputs.pr_number }}
-          git commit -m "Fix PR-${{ inputs.pr_number }} base path to include /msbench-result-viewer prefix"
+          git add pr-${{ inputs.pr_number }} CNAME
+          git commit -m "Fix PR-${{ inputs.pr_number }} base path"
           git push origin gh-pages
 
       - name: Comment success

@@ -81,3 +81,4 @@ jobs:
           publish_dir: ./dist
           # Replace all content with new build (which includes preserved PR previews)
           keep_files: false
+          cname: saragluna.site
