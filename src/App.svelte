@@ -1,13 +1,15 @@
 <script>
-  import { requests, functionCalls, selection, filters, loadDataFromText, filteredIndices, filterIndex, navigateFullPrev, navigateFullNext, navigateFilteredPrev, navigateFilteredNext } from './lib/stores.js';
+  import { requests, functionCalls, selection, filters, loadDataFromText, filteredIndices, filterIndex, navigateFullPrev, navigateFullNext, navigateFilteredPrev, navigateFilteredNext, fileFormat } from './lib/stores.js';
   import { onMount } from 'svelte';
   import DragDropArea from './components/DragDropArea.svelte';
   import TollCallsOverview from './components/TollCallsOverview.svelte';
+  import AgentSwitchingPanel from './components/AgentSwitchingPanel.svelte';
   import RequestDetail from './components/RequestDetail.svelte';
   import SearchBar from './components/SearchBar.svelte';
 
   $: total = $functionCalls.length;
   $: currentPosition = $selection.callIndex + 1;
+  $: isNewAgentFormat = $fileFormat === 'new-agent';
   $: fullIdx = $selection.callIndex || 0;
   $: totalAll = $selection.totalAll || 0;
   $: fList = $filteredIndices || [];
@@ -157,11 +159,15 @@
           </div>
         {#if $requests.length > 0}
           <div class="toolcalls-scroll">
-            <TollCallsOverview variant="panel" />
+            {#if isNewAgentFormat}
+              <AgentSwitchingPanel />
+            {:else}
+              <TollCallsOverview variant="panel" />
+            {/if}
           </div>
         {:else}
           <div class="overview-empty-placeholder">
-            <p class="placeholder-hint">Load a file to see tool calls grouped into rounds.</p>
+            <p class="placeholder-hint">Load a file to see {isNewAgentFormat ? 'agent switching' : 'tool calls grouped into rounds'}.</p>
           </div>
         {/if}
       </div>

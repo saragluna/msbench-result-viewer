@@ -8,6 +8,7 @@ const INFERRED_TOOL_COLOR = '#7c3aed'; // unified purple for all inferred tool n
 
 export const requests = writable([]); // raw loaded request objects
 export const functionCalls = writable([]); // flattened calls + placeholders
+export const fileFormat = writable('unknown'); // Track the detected file format: 'sim-requests', 'fetchlog', 'new-agent', 'unknown'
 //
 // Data shapes used by the UI
 //
@@ -581,6 +582,9 @@ export function loadDataFromText(text) {
     ? 'new-agent'
     : (data.length > 0 ? detectFormat(data[0]) : 'unknown');
   console.log(`[Format Detection] Detected format: ${format}`);
+  
+  // Store the detected format
+  fileFormat.set(format);
 
   // Normalize requests:
   // - fetchlog: unify message fields and response.value

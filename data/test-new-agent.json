@@ -1,0 +1,109 @@
+[
+  {
+    "name": "general-purpose",
+    "requestMessages": [
+      {
+        "role": "user",
+        "content": [{"type": "text", "text": "Create a function to add two numbers"}]
+      },
+      {
+        "role": "assistant",
+        "tool_calls": [
+          {"id": "tc1", "function": {"name": "create_file", "arguments": "{\"path\": \"add.js\", \"content\": \"function add(a, b) { return a + b; }\"}"}}
+        ]
+      }
+    ],
+    "response": {
+      "type": "success",
+      "value": ["Created add.js"]
+    }
+  },
+  {
+    "name": "general-purpose",
+    "requestMessages": [
+      {
+        "role": "user",
+        "content": [{"type": "text", "text": "Create a function to add two numbers"}]
+      },
+      {
+        "role": "assistant",
+        "tool_calls": [
+          {"id": "tc1", "function": {"name": "create_file", "arguments": "{\"path\": \"add.js\", \"content\": \"function add(a, b) { return a + b; }\"}"}},
+          {"id": "tc2", "function": {"name": "view", "arguments": "{\"path\": \"add.js\"}"}}
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "tc1",
+        "content": "File created successfully"
+      }
+    ],
+    "response": {
+      "type": "success",
+      "value": ["Created and viewing add.js"]
+    }
+  },
+  {
+    "name": "explore",
+    "requestMessages": [
+      {
+        "role": "user",
+        "content": [{"type": "text", "text": "Search for all JavaScript files"}]
+      },
+      {
+        "role": "assistant",
+        "tool_calls": [
+          {"id": "tc3", "function": {"name": "glob", "arguments": "{\"pattern\": \"**/*.js\"}"}}
+        ]
+      }
+    ],
+    "response": {
+      "type": "success",
+      "value": ["Found 5 JavaScript files"]
+    }
+  },
+  {
+    "name": "explore",
+    "requestMessages": [
+      {
+        "role": "user",
+        "content": [{"type": "text", "text": "Search for all JavaScript files"}]
+      },
+      {
+        "role": "assistant",
+        "tool_calls": [
+          {"id": "tc3", "function": {"name": "glob", "arguments": "{\"pattern\": \"**/*.js\"}"}},
+          {"id": "tc4", "function": {"name": "view", "arguments": "{\"path\": \"src/index.js\"}"}}
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "tc3",
+        "content": "add.js\nsrc/index.js\nsrc/util.js\nsrc/config.js\ntest/test.js"
+      }
+    ],
+    "response": {
+      "type": "success",
+      "value": ["Found and viewing files"]
+    }
+  },
+  {
+    "name": "task",
+    "requestMessages": [
+      {
+        "role": "user",
+        "content": [{"type": "text", "text": "Run tests"}]
+      },
+      {
+        "role": "assistant",
+        "tool_calls": [
+          {"id": "tc5", "function": {"name": "bash", "arguments": "{\"command\": \"npm test\"}"}}
+        ]
+      }
+    ],
+    "response": {
+      "type": "success",
+      "value": ["Tests passed"]
+    }
+  }
+]
