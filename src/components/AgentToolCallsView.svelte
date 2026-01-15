@@ -1,26 +1,27 @@
 <script>
   import { functionCalls, selection, selectCall, agentFilter, fileFormat } from '../lib/stores.js';
   
-  // Get filtered tool calls for the current agent
+  // Get filtered tool calls for the current agent with their indices
   $: agentToolCalls = (() => {
     if ($fileFormat !== 'new-agent' || $agentFilter.startIdx === -1 || $agentFilter.endIdx === -1) {
       return [];
     }
     
-    return $functionCalls.filter(call => 
-      typeof call.requestIndex === 'number' && 
-      call.requestIndex >= $agentFilter.startIdx && 
-      call.requestIndex <= $agentFilter.endIdx
-    );
+    return $functionCalls
+      .map((call, index) => ({ call, index }))
+      .filter(({ call }) => 
+        typeof call.requestIndex === 'number' && 
+        call.requestIndex >= $agentFilter.startIdx && 
+        call.requestIndex <= $agentFilter.endIdx
+      );
   })();
   
   // Get the agent name from the first request in the filtered range
   $: agentName = (() => {
-    if ($agentFilter.startIdx === -1) return null;
-    // Get the request at the start index to find agent name
-    const requests = [...$functionCalls];
-    const agentCall = requests.find(call => call.requestIndex === $agentFilter.startIdx);
-    return agentCall?.request?.name || null;
+    if ($agentFilter.startIdx === -1 || agentToolCalls.length === 0) return null;
+    // Get the first call's request to find agent name
+    const firstCall = agentToolCalls[0]?.call;
+    return firstCall?.request?.name || null;
   })();
   
   function displayCallName(call) {
@@ -39,14 +40,14 @@
     {/if}
   </div>
   <div class="toolcalls-container">
-    {#each agentToolCalls as call}
+    {#each agentToolCalls as { call, index }}
       <button
         class="toolcall-chip"
-        class:selected={$selection.callIndex === call.requestIndex * 100 + (call.callIndex || 0)}
+        class:selected={$selection.callIndex === index}
         style="--chip-color:{call.color}"
-        on:click={() => selectCall($functionCalls.indexOf(call))}
+        on:click={() => selectCall(index)}
         aria-label={'Tool call ' + (call.name || 'None')}>
-        <span class="chip-num">{$functionCalls.indexOf(call) + 1}</span>
+        <span class="chip-num">{index + 1}</span>
         <span class="chip-name">{displayCallName(call)}</span>
         {#if call.inferred}<span class="infer-badge" title="Inferred tool name">∑</span>{/if}
         {#if call.conversationSummary}<span class="summary-emoji" title="Conversation summary">📋</span>{/if}
