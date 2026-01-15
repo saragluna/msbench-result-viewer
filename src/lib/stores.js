@@ -54,18 +54,32 @@ export const selection = writable({ callIndex: 0, totalAll: 0 });
 // filterIndex: index within filteredIndices array ( -1 when not applicable or current call not inside filter )
 export const filterIndex = writable(-1);
 export const filters = writable({ fn: '', response: '' });
+// Agent filter for new-agent format: stores the range of request indices for the selected agent
+export const agentFilter = writable({ startIdx: -1, endIdx: -1 });
 
 // Derived filtered indices
 export const filteredIndices = derived([
   functionCalls,
-  filters
-], ([$calls, $filters]) => {
+  filters,
+  agentFilter,
+  fileFormat
+], ([$calls, $filters, $agentFilter, $fileFormat]) => {
   const fnTerm = $filters.fn.trim().toLowerCase();
   const respTerm = $filters.response.trim().toLowerCase();
-  if (!fnTerm && !respTerm) return [];
+  
+  // For new-agent format, if an agent is selected, filter by agent range
+  const hasAgentFilter = $fileFormat === 'new-agent' && $agentFilter.startIdx >= 0 && $agentFilter.endIdx >= 0;
+  
+  if (!fnTerm && !respTerm && !hasAgentFilter) return [];
   const matches = [];
   $calls.forEach((c, i) => {
     let ok = true;
+    
+    // Agent filter for new-agent format
+    if (hasAgentFilter) {
+      ok = ok && c.requestIndex >= $agentFilter.startIdx && c.requestIndex <= $agentFilter.endIdx;
+    }
+    
     if (fnTerm) ok = ok && c.name.toLowerCase().includes(fnTerm);
     if (respTerm) {
       let accum = '';

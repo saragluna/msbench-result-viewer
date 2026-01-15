@@ -1,6 +1,11 @@
 <script>
-  import { requests, selection, selectCall, functionCalls } from '../lib/stores.js';
-  import { onMount, tick } from 'svelte';
+  import { requests, selection, selectCall, functionCalls, agentFilter } from '../lib/stores.js';
+  import { onMount, tick, onDestroy } from 'svelte';
+  
+  // Clear agent filter when component is unmounted
+  onDestroy(() => {
+    agentFilter.set({ startIdx: -1, endIdx: -1 });
+  });
 
   // Group requests by agent name to show agent switching
   $: agentGroups = (() => {
@@ -36,6 +41,19 @@
 
     return groups;
   })();
+  
+  // Count tool calls for each agent group
+  $: agentGroupsWithToolCalls = agentGroups.map(group => {
+    // Count tool calls from this agent's requests
+    const toolCallCount = $functionCalls.filter(call => 
+      call.requestIndex >= group.startIdx && call.requestIndex <= group.endIdx
+    ).length;
+    
+    return {
+      ...group,
+      toolCallCount
+    };
+  });
 
   // Find which agent group contains the currently selected call
   $: selectedAgentGroup = (() => {
@@ -44,7 +62,7 @@
     
     const requestIndex = $functionCalls[callIdx].requestIndex;
     
-    for (const group of agentGroups) {
+    for (const group of agentGroupsWithToolCalls) {
       if (requestIndex >= group.startIdx && requestIndex <= group.endIdx) {
         return group;
       }
@@ -84,6 +102,9 @@
   }
 
   function selectAgent(group) {
+    // Set the agent filter to show only tool calls from this agent's context
+    agentFilter.set({ startIdx: group.startIdx, endIdx: group.endIdx });
+    
     // Select the first tool call in this agent group
     const firstReq = group.requests[0];
     if (!firstReq) return;
@@ -114,17 +135,17 @@
       <h2>Agent Switching</h2>
     </div>
     <div class="section-meta">
-      <span class="count-badge">{agentGroups.length}</span>
+      <span class="count-badge">{agentGroupsWithToolCalls.length}</span>
     </div>
   </header>
   
   <div class="agent-scroll" bind:this={scrollEl} role="region" aria-label="Agent switching scroll area">
     <div class="agent-content">
-      {#if !agentGroups.length}
+      {#if !agentGroupsWithToolCalls.length}
         <div class="empty">No agents found.</div>
       {:else}
         <div class="agent-list">
-          {#each agentGroups as group, idx (group.agentName + '-' + idx)}
+          {#each agentGroupsWithToolCalls as group, idx (group.agentName + '-' + idx)}
             <button
               class="agent-item"
               class:selected={selectedAgentGroup === group}
@@ -137,7 +158,7 @@
                 <span class="agent-name">{group.agentName}</span>
               </div>
               <div class="agent-meta">
-                <span class="agent-requests">{group.requests.length} request{group.requests.length === 1 ? '' : 's'}</span>
+                <span class="agent-requests">{group.toolCallCount} tool call{group.toolCallCount === 1 ? '' : 's'}</span>
               </div>
             </button>
           {/each}
