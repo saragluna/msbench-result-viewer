@@ -78,8 +78,10 @@ export const filteredIndices = derived([
     
     // Agent filter for new-agent format
     if (hasAgentFilter) {
-      // Ensure requestIndex exists and is a valid number before comparing
-      if (typeof c.requestIndex !== 'number') return;
+      // Skip entries with invalid requestIndex
+      if (typeof c.requestIndex !== 'number') {
+        return; // Exit this iteration of forEach
+      }
       ok = ok && c.requestIndex >= $agentFilter.startIdx && c.requestIndex <= $agentFilter.endIdx;
     }
     

@@ -82,8 +82,8 @@
     lastScrolledAgent = agentName;
     
     // Sanitize agent name for use in CSS selector to prevent CSS injection
-    // Using a more comprehensive escape for all CSS special characters
-    const sanitizedAgentName = agentName.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&');
+    // Escape quotes, backslashes, and square brackets that are problematic in CSS attribute selectors
+    const sanitizedAgentName = agentName.replace(/["'\\\[\]]/g, '\\$&');
     const btn = scrollEl.querySelector(`button[data-agent-name="${sanitizedAgentName}"]`);
     if (!btn) return;
     
