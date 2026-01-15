@@ -1,17 +1,18 @@
 <script>
   import { functionCalls, selection, selectCall, agentFilter, fileFormat } from '../lib/stores.js';
   
-  // Get filtered tool calls for the current agent with their indices
+  // Get cumulative tool calls from start up to the end of the current agent with their indices
   $: agentToolCalls = (() => {
     if ($fileFormat !== 'new-agent' || $agentFilter.startIdx === -1 || $agentFilter.endIdx === -1) {
       return [];
     }
     
+    // Show all tool calls from the beginning (index 0) up to and including the end of the selected agent
     return $functionCalls
       .map((call, index) => ({ call, index }))
       .filter(({ call }) => 
         typeof call.requestIndex === 'number' && 
-        call.requestIndex >= $agentFilter.startIdx && 
+        call.requestIndex >= 0 && 
         call.requestIndex <= $agentFilter.endIdx
       );
   })();
