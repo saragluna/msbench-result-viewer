@@ -68,7 +68,8 @@ export const filteredIndices = derived([
   const respTerm = $filters.response.trim().toLowerCase();
   
   // For new-agent format, if an agent is selected, filter by agent range
-  const hasAgentFilter = $fileFormat === 'new-agent' && $agentFilter.startIdx >= 0 && $agentFilter.endIdx >= 0;
+  // -1 is used as sentinel value to indicate no agent filter is active
+  const hasAgentFilter = $fileFormat === 'new-agent' && $agentFilter.startIdx !== -1 && $agentFilter.endIdx !== -1;
   
   if (!fnTerm && !respTerm && !hasAgentFilter) return [];
   const matches = [];
@@ -77,6 +78,8 @@ export const filteredIndices = derived([
     
     // Agent filter for new-agent format
     if (hasAgentFilter) {
+      // Ensure requestIndex exists and is a valid number before comparing
+      if (typeof c.requestIndex !== 'number') return;
       ok = ok && c.requestIndex >= $agentFilter.startIdx && c.requestIndex <= $agentFilter.endIdx;
     }
     
