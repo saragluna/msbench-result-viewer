@@ -290,12 +290,13 @@
 
 .agent-item {
   --_c: var(--agent-color, #666);
+  /* Fallback for browsers without color-mix */
   background: linear-gradient(135deg, var(--_c) 0%, var(--_c) 100%);
-  /* Lightened version for gradient end - fallback for browsers without color-mix */
-  background: linear-gradient(135deg, var(--_c) 0%, rgba(255, 255, 255, 0.15) 100%);
+  /* Modern browsers with color-mix support */
   background: linear-gradient(135deg, var(--_c) 0%, color-mix(in srgb, var(--_c) 85%, white) 100%);
-  border: 1px solid rgba(0, 0, 0, 0.2);
   /* Fallback border for browsers without color-mix */
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  /* Modern border with color-mix */
   border: 1px solid color-mix(in srgb, var(--_c) 60%, transparent);
   color: #fff;
   padding: 10px 12px;
@@ -430,8 +431,9 @@
   }
 
   .agent-item {
-    border-color: rgba(255, 255, 255, 0.1);
     /* Fallback border for browsers without color-mix */
+    border-color: rgba(255, 255, 255, 0.1);
+    /* Modern border with color-mix */
     border-color: color-mix(in srgb, var(--_c) 40%, transparent);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
