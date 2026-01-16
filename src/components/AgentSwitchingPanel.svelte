@@ -2,6 +2,9 @@
   import { requests, selection, selectCall, functionCalls, agentFilter } from '../lib/stores.js';
   import { onMount, tick, onDestroy } from 'svelte';
   
+  // Configuration constants
+  const PROMPT_KEY_LENGTH = 200; // Number of characters from prompt to use for execution identification
+  
   // Clear agent filter when component is unmounted
   onDestroy(() => {
     agentFilter.set({ startIdx: -1, endIdx: -1 });
@@ -18,9 +21,10 @@
       const agentName = req?.name || 'default agent';
       // Get the prompt from the first system/user message
       const promptMsg = req?.requestMessages?.[0]?.content?.[0]?.text || '';
-      // Use first 200 chars of prompt as part of the key to distinguish different executions
-      const promptKey = promptMsg.substring(0, 200);
-      const executionKey = `${agentName}|||${promptKey}`;
+      // Use first N chars of prompt as part of the key to distinguish different executions
+      const promptKey = promptMsg.substring(0, PROMPT_KEY_LENGTH);
+      // Use JSON stringify to create a robust key that handles special characters
+      const executionKey = JSON.stringify([agentName, promptKey]);
       
       if (executionKey !== currentKey) {
         // New execution (different prompt or agent), create new group
