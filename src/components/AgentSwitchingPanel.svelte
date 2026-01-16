@@ -7,29 +7,36 @@
     agentFilter.set({ startIdx: -1, endIdx: -1 });
   });
 
-  // Group requests by agent name to show agent switching
+  // Group requests by prompt + agent name to show agent execution switching
+  // Each execution is identified by the combination of prompt and agent name
   $: agentGroups = (() => {
     const groups = [];
-    let currentAgent = null;
+    let currentKey = null;
     let currentGroup = null;
 
     $requests.forEach((req, idx) => {
       const agentName = req?.name || 'default agent';
+      // Get the prompt from the first system/user message
+      const promptMsg = req?.requestMessages?.[0]?.content?.[0]?.text || '';
+      // Use first 200 chars of prompt as part of the key to distinguish different executions
+      const promptKey = promptMsg.substring(0, 200);
+      const executionKey = `${agentName}|||${promptKey}`;
       
-      if (agentName !== currentAgent) {
-        // New agent, create new group
+      if (executionKey !== currentKey) {
+        // New execution (different prompt or agent), create new group
         if (currentGroup) {
           groups.push(currentGroup);
         }
-        currentAgent = agentName;
+        currentKey = executionKey;
         currentGroup = {
           agentName,
+          promptKey,
           requests: [{ req, idx }],
           startIdx: idx,
           endIdx: idx
         };
       } else {
-        // Same agent, add to current group
+        // Same execution, add to current group
         currentGroup.requests.push({ req, idx });
         currentGroup.endIdx = idx;
       }
@@ -42,16 +49,20 @@
     return groups;
   })();
   
-  // Count tool calls for each agent group
+  // Count tool calls for each agent execution group
   $: agentGroupsWithToolCalls = agentGroups.map(group => {
-    // Count tool calls from this agent's requests
+    // Count tool calls from this specific execution (not cumulative)
     const toolCallCount = $functionCalls.filter(call => 
       call.requestIndex >= group.startIdx && call.requestIndex <= group.endIdx
     ).length;
     
+    // Determine if this agent should be indented (all except panel/editAgent)
+    const shouldIndent = group.agentName !== 'panel/editAgent';
+    
     return {
       ...group,
-      toolCallCount
+      toolCallCount,
+      shouldIndent
     };
   });
 
@@ -146,10 +157,11 @@
         <div class="empty">No agents found.</div>
       {:else}
         <div class="agent-list">
-          {#each agentGroupsWithToolCalls as group, idx (group.agentName + '-' + idx)}
+          {#each agentGroupsWithToolCalls as group, idx (group.agentName + '-' + group.promptKey + '-' + idx)}
             <button
               class="agent-item"
               class:selected={selectedAgentGroup === group}
+              class:indented={group.shouldIndent}
               style="--agent-color:{agentColor(group.agentName)}"
               data-agent-name={group.agentName}
               aria-label="Agent {group.agentName}"
@@ -331,6 +343,11 @@
   transition: all 0.2s ease;
   text-align: left;
   width: 100%;
+}
+
+.agent-item.indented {
+  margin-left: 20px;
+  width: calc(100% - 20px);
 }
 
 .agent-item:hover {
