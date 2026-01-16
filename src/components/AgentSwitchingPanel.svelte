@@ -4,6 +4,7 @@
   
   // Configuration constants
   const PROMPT_KEY_LENGTH = 200; // Number of characters from prompt to use for execution identification
+  const NO_INDENT_AGENT = 'panel/editAgent'; // Agent name that should not be indented
   
   // Clear agent filter when component is unmounted
   onDestroy(() => {
@@ -22,7 +23,7 @@
       // Get the prompt from the first system/user message
       const promptMsg = req?.requestMessages?.[0]?.content?.[0]?.text || '';
       // Use first N chars of prompt as part of the key to distinguish different executions
-      const promptKey = promptMsg.substring(0, PROMPT_KEY_LENGTH);
+      const promptKey = (promptMsg || '').substring(0, PROMPT_KEY_LENGTH);
       // Use JSON stringify to create a robust key that handles special characters
       const executionKey = JSON.stringify([agentName, promptKey]);
       
@@ -60,8 +61,8 @@
       call.requestIndex >= group.startIdx && call.requestIndex <= group.endIdx
     ).length;
     
-    // Determine if this agent should be indented (all except panel/editAgent)
-    const shouldIndent = group.agentName !== 'panel/editAgent';
+    // Determine if this agent should be indented (all except NO_INDENT_AGENT)
+    const shouldIndent = group.agentName !== NO_INDENT_AGENT;
     
     return {
       ...group,
@@ -161,7 +162,7 @@
         <div class="empty">No agents found.</div>
       {:else}
         <div class="agent-list">
-          {#each agentGroupsWithToolCalls as group, idx (group.agentName + '-' + group.promptKey + '-' + idx)}
+          {#each agentGroupsWithToolCalls as group, idx (JSON.stringify([group.agentName, group.promptKey, idx]))}
             <button
               class="agent-item"
               class:selected={selectedAgentGroup === group}
