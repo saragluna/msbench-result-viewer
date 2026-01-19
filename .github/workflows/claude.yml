@@ -36,8 +36,22 @@ jobs:
 
       - name: Run Copilot Proxy
         run: |
-          npx copilot-api@latest start --github-token ${{ secrets.C_TOKEN }}
-          
+          npx copilot-api@latest start --github-token ${{ secrets.C_TOKEN }} &
+          # Wait for the service to start listening on port 4141
+          SERVICE_READY=false
+          for i in {1..30}; do
+            if nc -z localhost 4141 2>/dev/null; then
+              echo "Copilot API is ready"
+              SERVICE_READY=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$SERVICE_READY" = false ]; then
+            echo "Error: Copilot API failed to start within 30 seconds"
+            exit 1
+          fi
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
