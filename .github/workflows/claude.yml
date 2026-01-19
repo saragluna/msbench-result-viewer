@@ -36,8 +36,9 @@ jobs:
 
       - name: Run Copilot Proxy
         run: |
-          npx copilot-api@latest start --github-token ${{ secrets.C_TOKEN }}
-          
+          npx copilot-api@latest start --github-token ${{ secrets.C_TOKEN }} &
+          sleep 5
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
