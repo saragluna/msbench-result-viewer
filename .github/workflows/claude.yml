@@ -11,9 +11,11 @@ on:
     types: [submitted]
 
 jobs:
-  test: 
+  test:
+    runs-on: ubuntu-latest
+    permissions: {}
     steps:
-      run: echo "in"
+      - run: echo "in"
 
   claude:
     if: |
