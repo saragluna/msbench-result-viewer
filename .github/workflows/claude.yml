@@ -37,7 +37,14 @@ jobs:
       - name: Run Copilot Proxy
         run: |
           npx copilot-api@latest start --github-token ${{ secrets.C_TOKEN }} &
-          sleep 5
+          # Wait for the service to start listening on port 4141
+          for i in {1..30}; do
+            if nc -z localhost 4141 2>/dev/null; then
+              echo "Copilot API is ready"
+              break
+            fi
+            sleep 1
+          done
 
       - name: Run Claude Code
         id: claude
