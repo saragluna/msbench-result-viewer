@@ -55,9 +55,12 @@ jobs:
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
+        # see https://github.com/anthropics/claude-code-action/issues/551
+        env:
+          ANTHROPIC_BASE_URL: ANTHROPIC_BASE_URL
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-
+          claude_code_oauth_token: ${{ secrets.dummy }}
+    
           # Optional: Customize the trigger phrase (default: @claude)
           # trigger_phrase: "/claude"
 
@@ -75,8 +78,6 @@ jobs:
           settings: |
             {
               "env": {
-                "ANTHROPIC_AUTH_TOKEN": "dummy",
-                "ANTHROPIC_BASE_URL": "http://localhost:4141",
                 "ANTHROPIC_MODEL": "gpt-5.2-codex",
                 "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-5.2-codex",
                 "ANTHROPIC_SMALL_FAST_MODEL": "gpt-4o-mini-2024-07-18",
