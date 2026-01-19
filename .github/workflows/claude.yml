@@ -11,12 +11,6 @@ on:
     types: [submitted]
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    permissions: {}
-    steps:
-      - run: echo "in"
-
   claude:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
@@ -42,7 +36,7 @@ jobs:
 
       - name: Run Copilot Proxy
         run: |
-          npx copilot-api@latest start --github-token ${{ secrets.GITHUB_TOKEN }}
+          npx copilot-api@latest start --github-token ${{ secrets.C_TOKEN }}
           
       - name: Run Claude Code
         id: claude
