@@ -1,14 +1,15 @@
 <script>
-  import { functionCalls, selection, filteredIndices, activeList, groupedCalls, shouldHideRequestFrame, selectCall, requests } from '../lib/stores.js';
+  import { functionCalls, selection, filteredIndices, activeList, groupedCalls, shouldHideRequestFrame, selectCall, requests, fileFormat } from '../lib/stores.js';
   import { onMount, tick } from 'svelte';
   export let variant = 'panel'; // 'panel' | 'top'
 
   // (Removed collapse toggle per request)
-  
+
   $: list = $activeList; // indices to show
   $: groups = $groupedCalls; // grouped by request
   $: hideFrame = $shouldHideRequestFrame; // hide request frame when tool calls = requests
   $: fullRequests = $requests; // complete list for round detection independent of filters
+  $: format = $fileFormat; // detected file format
 
   // --- Span-based round logic ---
   // 1. Each request has a response.requestId (may repeat across many consecutive or separated indices).
@@ -138,7 +139,7 @@
 <section class="calls-panel {variant === 'top' ? 'top-mode' : 'dense'} {hideFrame ? 'flat-mode' : 'grouped-mode'}" data-variant={variant}>
   <header class="section-header calls-header">
     <div class="header-title">
-  <h2>Next tool calls</h2>
+  <h2>{format === 'new-agent' ? 'Agent switching' : 'Next tool calls'}</h2>
     </div>
     <div class="section-meta">
       <span class="count-badge">{list.length}</span>
