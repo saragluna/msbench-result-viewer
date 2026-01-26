@@ -8,6 +8,7 @@ const INFERRED_TOOL_COLOR = '#7c3aed'; // unified purple for all inferred tool n
 
 export const requests = writable([]); // raw loaded request objects
 export const functionCalls = writable([]); // flattened calls + placeholders
+export const fileFormat = writable('unknown'); // Track the detected file format: 'sim-requests', 'fetchlog', 'new-agent', 'unknown'
 //
 // Data shapes used by the UI
 //
@@ -53,18 +54,37 @@ export const selection = writable({ callIndex: 0, totalAll: 0 });
 // filterIndex: index within filteredIndices array ( -1 when not applicable or current call not inside filter )
 export const filterIndex = writable(-1);
 export const filters = writable({ fn: '', response: '' });
+// Agent filter for new-agent format: stores the range of request indices for the selected agent
+export const agentFilter = writable({ startIdx: -1, endIdx: -1 });
 
 // Derived filtered indices
 export const filteredIndices = derived([
   functionCalls,
-  filters
-], ([$calls, $filters]) => {
+  filters,
+  agentFilter,
+  fileFormat
+], ([$calls, $filters, $agentFilter, $fileFormat]) => {
   const fnTerm = $filters.fn.trim().toLowerCase();
   const respTerm = $filters.response.trim().toLowerCase();
-  if (!fnTerm && !respTerm) return [];
+  
+  // For new-agent format, if an agent is selected, filter by agent range
+  // -1 is used as sentinel value to indicate no agent filter is active
+  const hasAgentFilter = $fileFormat === 'new-agent' && $agentFilter.startIdx !== -1 && $agentFilter.endIdx !== -1;
+  
+  if (!fnTerm && !respTerm && !hasAgentFilter) return [];
   const matches = [];
   $calls.forEach((c, i) => {
     let ok = true;
+    
+    // Agent filter for new-agent format
+    if (hasAgentFilter) {
+      // Skip entries with invalid requestIndex
+      if (typeof c.requestIndex !== 'number') {
+        return; // Exit this iteration of forEach
+      }
+      ok = ok && c.requestIndex >= $agentFilter.startIdx && c.requestIndex <= $agentFilter.endIdx;
+    }
+    
     if (fnTerm) ok = ok && c.name.toLowerCase().includes(fnTerm);
     if (respTerm) {
       let accum = '';
@@ -453,85 +473,6 @@ function normalizeFetchlogRequest(req, allRequests = [], currentIndex = 0) {
   return normalized;
 }
 
-// ========== Normalize new-agent Requests ==========
-// New-agent logs store tool calls inside requestMessages as assistant.tool_calls, and repeat the full
-// conversation history on each entry. This function normalizes such logs into a shape compatible with
-// the existing UI by synthesizing response.copilotFunctionCalls.
-//
-// Key behavior:
-// - Preserve grouping within a single assistant tool_calls block: if one assistant message has
-//   tool_calls [A,B], we emit copilotFunctionCalls [A,B] together.
-// - Flatten across multiple assistant tool_calls blocks: if a single entry contains multiple assistant
-//   messages with tool_calls, we split into multiple synthetic requests (one per assistant tool_calls block).
-// - De-dupe across the entire file by tool_call id because later entries repeat earlier tool calls.
-function normalizeNewAgentRequests(data) {
-  const seenToolCallIds = new Set();
-  const expanded = [];
-
-  for (const req of data) {
-    const msgs = safeArray(req?.requestMessages);
-    let pushedAny = false;
-
-    for (const m of msgs) {
-      if (m?.role !== 'assistant') continue;
-      const tcs = safeArray(m?.tool_calls);
-      if (!tcs.length) continue;
-
-      // Extract calls from THIS ONE assistant tool_calls block (no cross-message mixing)
-      const out = [];
-      const seenIdsInBlock = new Set();
-      for (const tc of tcs) {
-        const id = tc?.id || tc?.tool_call_id || tc?.toolCallId;
-        if (id && seenIdsInBlock.has(id)) continue;
-        const fn = tc?.function || tc?.fn || {};
-        const name = fn?.name || tc?.name || 'Unknown';
-        const rawArgs = fn?.arguments ?? tc?.arguments;
-        const argsStr = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs || {});
-        if (id) seenIdsInBlock.add(id);
-        out.push({ name, arguments: argsStr, id });
-      }
-
-      // File-level de-dupe by tool call id (later entries repeat earlier tool calls)
-      const newCalls = [];
-      for (const c of out) {
-        const id = c?.id;
-        if (!id) {
-          // If id missing, treat as unique (can't reliably map/dedupe)
-          newCalls.push(c);
-          continue;
-        }
-        if (seenToolCallIds.has(id)) continue;
-        seenToolCallIds.add(id);
-        newCalls.push(c);
-      }
-
-      if (!newCalls.length) continue;
-      pushedAny = true;
-
-      expanded.push({
-        ...req,
-        response: {
-          ...(req.response || {}),
-          copilotFunctionCalls: newCalls
-        }
-      });
-    }
-
-    // If this entry introduced no new tool calls, still keep a request so the UI can show the turn.
-    if (!pushedAny) {
-      expanded.push({
-        ...req,
-        response: {
-          ...(req.response || {}),
-          copilotFunctionCalls: []
-        }
-      });
-    }
-  }
-
-  return expanded;
-}
-
 // ========== Universal Tool Call Extractor ==========
 function extractToolCalls(req) {
   const format = detectFormat(req);
@@ -542,13 +483,8 @@ function extractToolCalls(req) {
     case 'fetchlog':
       return parseFetchlogFormat(req);
     case 'new-agent':
-      // For new-agent files, `loadDataFromText` is responsible for normalizing embedded tool calls
-      // into response.copilotFunctionCalls and de-duping across the file.
-      // Always trust the normalized field if it's present (even if empty), otherwise we could
-      // accidentally re-read historical tool_calls from requestMessages.
-      if (Array.isArray(req?.response?.copilotFunctionCalls)) {
-        return parseSimRequestsFormat(req);
-      }
+      // For new-agent files, extract tool calls directly from requestMessages.
+      // No pre-normalization is done, so we read from the embedded assistant.tool_calls.
       return extractEmbeddedToolCallsFromMessages(req);
     default:
       console.warn('Unknown format for request:', req);
@@ -581,18 +517,18 @@ export function loadDataFromText(text) {
     ? 'new-agent'
     : (data.length > 0 ? detectFormat(data[0]) : 'unknown');
   console.log(`[Format Detection] Detected format: ${format}`);
+  
+  // Store the detected format
+  fileFormat.set(format);
 
   // Normalize requests:
   // - fetchlog: unify message fields and response.value
-  // - new-agent: synthesize per-prompt response.copilotFunctionCalls from embedded requestMessages assistant.tool_calls,
-  //              and de-duplicate tool call ids across requests (later prompts repeat earlier tool calls).
+  // - new-agent: no normalization needed since we have a dedicated AgentSwitchingPanel view
   const normalizedData = (() => {
     if (format === 'fetchlog') {
       return data.map((req, idx) => normalizeFetchlogRequest(req, data, idx));
     }
-    if (format === 'new-agent') {
-      return normalizeNewAgentRequests(data);
-    }
+    // No normalization for new-agent format - use original structure
     return data;
   })();
   
