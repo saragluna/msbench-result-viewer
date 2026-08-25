@@ -53,12 +53,12 @@ You can trigger a main deployment manually:
 
 ### Main Deployment (`.github/workflows/deploy-pages.yml`)
 - Triggers on push to `main` branch or manual dispatch
-- Deploys to the root of GitHub Pages
+- Deploys to the `/msbench-result-viewer/` project path
 - Preserves PR preview directories when deploying
 
 ### PR Preview (`.github/workflows/pr-preview.yml`)
 - Triggers on PR open, update, or close
-- Deploys PRs to `pr-{number}/` subdirectories
+- Deploys PRs to `/msbench-result-viewer/pr-{number}/` paths
 - Comments on PRs with preview URLs
 - Cleans up when PRs are closed
 
