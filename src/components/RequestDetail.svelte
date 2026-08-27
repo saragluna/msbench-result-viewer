@@ -1,6 +1,7 @@
 <script>
-  import { functionCalls, selection, shouldHideRequestFrame } from '../lib/stores.js';
+  import { functionCalls, selection, shouldHideRequestFrame, fileFormat } from '../lib/stores.js';
   import ResponseDetail from './ResponseDetail.svelte';
+  import AgentToolCallsView from './AgentToolCallsView.svelte';
 
   $: current = $functionCalls[$selection.callIndex];
   $: req = current && current.request;
@@ -858,6 +859,11 @@
         </details>
       </section>
     </section>
+
+    <!-- Agent Tool Calls View for new-agent format -->
+    {#if $fileFormat === 'new-agent'}
+      <AgentToolCallsView />
+    {/if}
 
     <!-- Use ResponseDetail component -->
     <ResponseDetail {current} {req} />
